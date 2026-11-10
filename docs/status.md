@@ -20,6 +20,11 @@
 - Slice 6: shapes (strip, floating, islands, island), positions (top, bottom, auto-hide, shrink), light material,
   workspace styles (red, block, dot, pill, dots), all in the settings page. Bar made 15% bigger: 32 px, 13.8 px text.
   Verified on the LOQ by screenshots; auto-hide's slide-back-in on hover not exercised (needs the cursor).
+- Size pass (2026-11-10): one SIZE setting scales bar, control centre and tooltips (default 130%: 36 px bar, 15.6 px
+  text, ~14 px panel text, ~39 px rows). Swept every shape x material, workspace style, clock format, size and
+  position by screenshot; fixed: workspace/app spacing, song title fading when it fits, panel gap above a bottom bar,
+  restart race with the single-instance lock, DGPU shown only when a driver is bound and the GPU is active
+  (control centre says NO DRIVER instead), ETHERNET on the networks row, graph tracks.
 
 ## Next
 - Tray (StatusNotifierItem) behind the chevron: needs a D-Bus library (zbus) — to be agreed with the user.

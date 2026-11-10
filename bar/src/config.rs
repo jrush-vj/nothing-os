@@ -59,6 +59,8 @@ pub enum ClockFormat {
 pub struct Config {
     pub shape: Shape,
     pub workspaces: WsStyle,
+    /// Scales the whole UI (bar, control centre, tooltips); `height` and `font_px` are the sizes at 1.0.
+    pub size: f32,
     pub height: u32,
     pub position: Position,
     pub material: Material,
@@ -73,13 +75,15 @@ impl Default for Config {
         Self {
             shape: Shape::Strip,
             workspaces: WsStyle::Red,
-            height: 32,
+            // 130%: a 36 px bar with 15.6 px text, comfortable on a 15.6" 1080p laptop panel.
+            size: 1.3,
+            height: 28,
             position: Position::Top,
             material: Material::Solid,
             clock: ClockFormat::HhMm,
             hairline: true,
             font: "JetBrains Mono".into(),
-            font_px: 13.8,
+            font_px: 12.0,
         }
     }
 }
@@ -97,6 +101,11 @@ impl Config {
                 "material" => c.material = by_name(&MATERIALS, v).unwrap_or(c.material),
                 "clock" => c.clock = by_name(&CLOCKS, v).unwrap_or(c.clock),
                 "shape" => c.shape = by_name(&SHAPES, v).unwrap_or(c.shape),
+                "size" => {
+                    c.size = by_name(&SIZES, v).or_else(|| v.trim_end_matches('%').parse::<f32>().ok().map(|n| if n > 4.0 { n / 100.0 } else { n }))
+                        .filter(|z| (0.75..=2.0).contains(z))
+                        .unwrap_or(c.size)
+                }
                 "workspaces" => c.workspaces = by_name(&WS_STYLES, v).unwrap_or(c.workspaces),
                 "hairline" => c.hairline = v != "off" && v != "false",
                 "font" if !v.is_empty() => c.font = v.to_string(),
@@ -108,7 +117,7 @@ impl Config {
     }
 }
 
-const HEIGHTS: [u32; 5] = [24, 28, 32, 36, 40];
+const SIZES: [(f32, &str); 4] = [(1.0, "small"), (1.15, "medium"), (1.3, "large"), (1.45, "xlarge")];
 const POSITIONS: [(Position, &str); 4] = [
     (Position::Top, "top"),
     (Position::Bottom, "bottom"),
@@ -156,7 +165,7 @@ impl Config {
     pub fn rows(&self) -> [(&'static str, String); 7] {
         [
             ("SHAPE", name(&SHAPES, self.shape).to_uppercase()),
-            ("HEIGHT", format!("{} PX", self.height)),
+            ("SIZE", format!("{:.0}%", self.size * 100.0)),
             ("POSITION", name(&POSITIONS, self.position).to_uppercase()),
             ("MATERIAL", name(&MATERIALS, self.material).to_uppercase()),
             ("WORKSPACES", name(&WS_STYLES, self.workspaces).to_uppercase()),
@@ -169,7 +178,10 @@ impl Config {
     pub fn cycle(&mut self, i: usize) {
         match i {
             0 => self.shape = next(&SHAPES, self.shape),
-            1 => self.height = HEIGHTS[(HEIGHTS.iter().position(|h| *h == self.height).map_or(0, |p| p + 1)) % HEIGHTS.len()],
+            1 => {
+                let i = SIZES.iter().position(|(z, _)| (z - self.size).abs() < 0.01).map_or(0, |i| i + 1);
+                self.size = SIZES[i % SIZES.len()].0;
+            }
             2 => self.position = next(&POSITIONS, self.position),
             3 => self.material = next(&MATERIALS, self.material),
             4 => self.workspaces = next(&WS_STYLES, self.workspaces),
@@ -182,10 +194,12 @@ impl Config {
     pub fn render(&self) -> String {
         [
             "# nothing-bar settings (also changed from the control centre). Changes apply when the file is saved.".to_string(),
-            "# shape strip, floating, islands, island | height 16..64 | position top, bottom, autohide, shrink".into(),
+            "# shape strip, floating, islands, island | size small, medium, large, xlarge (or a percentage)".into(),
+            "# position top, bottom, autohide, shrink | height and font_px are the sizes at 100%".into(),
             "# material solid, translucent, frosted, clear, fade, light | workspaces red, block, dot, pill, dots".into(),
             "# clock hh:mm, hh:mm:ss, date, 12h | hairline on, off".into(),
             format!("shape = {}", name(&SHAPES, self.shape)),
+            format!("size = {}", SIZES.iter().find(|(z, _)| (z - self.size).abs() < 0.01).map_or(format!("{:.0}%", self.size * 100.0), |(_, n)| n.to_string())),
             format!("height = {}", self.height),
             format!("position = {}", name(&POSITIONS, self.position)),
             format!("material = {}", name(&MATERIALS, self.material)),
@@ -263,12 +277,14 @@ mod tests {
         }
         assert_eq!(Config::parse(&c.render()), c);
         assert!(c.render().lines().all(|l| !l.starts_with(' ')));
-        assert_eq!((c.shape, c.height, c.position, c.material), (Shape::Floating, 36, Position::Bottom, Material::Translucent));
+        assert_eq!((c.shape, c.size, c.position, c.material), (Shape::Floating, 1.45, Position::Bottom, Material::Translucent));
         assert_eq!((c.workspaces, c.clock, c.hairline), (WsStyle::Block, ClockFormat::HhMmSs, false));
-        for _ in 0..5 {
+        for _ in 0..4 {
             c.cycle(1);
         }
-        assert_eq!(c.height, 36);
+        assert_eq!(c.size, 1.45);
+        assert_eq!(Config::parse("size = 120%").size, 1.2);
+        assert_eq!(Config::parse("size = 9").size, 1.3, "out of range keeps the default");
         let c = Config::parse("position = autohide\nmaterial = light\nshape = island\nworkspaces = dots");
         assert_eq!((c.position, c.material, c.shape, c.workspaces), (Position::AutoHide, Material::Light, Shape::Island, WsStyle::Dots));
     }

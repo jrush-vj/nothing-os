@@ -58,7 +58,7 @@ Then log out and in. `install-root.sh` removes the CachyOS Noctalia desktop if p
 
 `bar/` is the top bar, written in Rust for this rice: a Wayland layer-shell surface drawn with tiny-skia, talking
 to Hyprland's sockets directly. It draws only while something moves (at the display's refresh rate) and nothing
-when idle. 32 px tall with 13.8 px text by default. On the LOQ 15IRX9: ~5 MB of RAM, a frame in ~0.2 ms, ~0.5% of one core on average.
+when idle. A SIZE setting scales everything; the default (130%) is a 36 px bar with 15.6 px text, sized for a 15.6" 1080p panel. On the LOQ 15IRX9: ~5 MB of RAM, a frame in ~0.2 ms, ~0.5% of one core on average.
 The design came out of four rounds of picking options: [docs/bar-spec.md](docs/bar-spec.md).
 
 - Left: workspaces in use (active one red with a spring "pop", urgent ones breathe), `App · title` (fades out when
@@ -69,7 +69,7 @@ The design came out of four rounds of picking options: [docs/bar-spec.md](docs/b
 - Mouse: click a workspace or scroll over them to switch; scroll on volume/brightness; middle-click volume mutes,
   right-click opens the mixer; click CPU/RAM for btop. A hover pill glides between items.
 - Settings: `~/.config/nothing-bar/config` (see [bar/config.example](bar/config.example)) or BAR SETTINGS in the
-  control centre, applied live: shape (strip, floating, three islands, centre island), height, position (top,
+  control centre, applied live: shape (strip, floating, three islands, centre island), size (100/115/130/145%), position (top,
   bottom, auto-hide, shrink to the island while a window is maximized), material (solid, translucent, frosted,
   clear, fade, light), workspace style (red number, inverted block, red dot, sliding pill, dots), clock format.
 - Control centre (click the status cluster): Wi-Fi, Bluetooth, mic and turbo toggles, network and device lists,

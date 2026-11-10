@@ -195,7 +195,7 @@ fn main() {
 
     let mut pool = SlotPool::new(4 * 1920 * 64, &app.shm).expect("shm pool");
     let mut cv = canvas::Canvas::new(app.size.0, app.size.1, load_fonts(&cfg.font));
-    let mut pcv = canvas::Canvas::new(panel::SURFACE_W, panel::SURFACE_H, load_fonts(&cfg.font));
+    let mut pcv = canvas::Canvas::new(1, 1, load_fonts(&cfg.font));
     let mut bar = bar::Bar::new(cfg.clone());
     let mut panel = panel::Panel::new(cfg);
     bar.still = turbo();
@@ -257,7 +257,7 @@ fn main() {
     let mut debug_open = std::env::var("NOTHING_BAR_OPEN").ok();
     let mut hover_since: Option<(bar::Hit, Instant)> = None;
     // What the bar surface is currently placed as, and the auto-hide input state.
-    let mut placed = (bar.cfg.height, bar.cfg.position, bar.cfg.shape);
+    let mut placed = (bar_height(&bar.cfg), bar.cfg.position, bar.cfg.shape);
     let mut strip_input = false;
     let mut hide_at: Option<Instant> = None;
     let mut tip_cv = canvas::Canvas::new(1, 1, load_fonts(&bar.cfg.font));
@@ -523,7 +523,7 @@ fn main() {
             }
         }
         // ---------------------------------------------------------------- geometry and auto-hide
-        let want = (bar.cfg.height, bar.cfg.position, bar.shape());
+        let want = (bar_height(&bar.cfg), bar.cfg.position, bar.shape());
         if want != placed && !app.hidden {
             place(&app.layer, &bar.cfg, want.2);
             app.layer.commit();
@@ -575,8 +575,9 @@ fn main() {
             && app.tip.as_ref().is_none_or(|t| &t.text != text)
         {
             let s = app.scale.max(1) as f32;
-            let w = (tip_cv.fonts.width(canvas::Weight::Regular, 11.0 * s, text) / s + 24.0).ceil() as u32;
-            let h = 26u32;
+            let z = bar.cfg.size;
+            let w = (tip_cv.fonts.width(canvas::Weight::Regular, 11.0 * s * z, text) / s + 24.0 * z).ceil() as u32;
+            let h = (26.0 * z).round() as u32;
             let left = ((cx / s) - w as f32 / 2.0).clamp(6.0, app.size.0 as f32 - w as f32 - 6.0);
             let layer = layer_shell.create_layer_surface(&qh, compositor.create_surface(&qh), Layer::Overlay, Some("nothing-bar-tooltip"), None);
             let top = bar.cfg.position.at_top();
@@ -597,7 +598,7 @@ fn main() {
         {
             let s = app.scale.max(1);
             tip_cv.resize(t.size.0 * s as u32, t.size.1 * s as u32);
-            let sf = s as f32;
+            let sf = s as f32 * bar.cfg.size;
             tip_cv.clear(canvas::Rgba(0.0, 0.0, 0.0, 0.0));
             let (w, h) = (tip_cv.pix.width() as f32, tip_cv.pix.height() as f32);
             tip_cv.round_rect(0.0, 0.0, w, h, 9.0 * sf, canvas::Rgba::hex(0x0d0d0d).alpha(0.92));
@@ -619,10 +620,14 @@ fn main() {
             let (c, r) = (cpu.sample(), sys::ram_used_gib());
             bar.set_stats(c, r);
             bar.net = net.sample();
+            panel.wired = bar.net.as_ref().is_some_and(|n| !n.wifi);
             let b = status::brightness();
             bar.set_brightness(b);
             bar.battery = status::battery();
-            bar.dgpu = status::dgpu_awake();
+            let gpu = status::dgpu();
+            // Red in the bar means "working now"; a card without a driver is reported in the control centre.
+            bar.dgpu = gpu == status::Dgpu::Awake;
+            panel.gpu = gpu;
             // Graph history is kept even while the panel is closed, so it has something to show on open.
             let open = panel.is_open();
             let g = &mut panel.graphs;
@@ -671,7 +676,7 @@ fn main() {
             let s = app.scale.max(1);
             cv.resize(app.size.0 * s as u32, app.size.1 * s as u32);
             let t0 = Instant::now();
-            bar.draw(&mut cv, s as f32);
+            bar.draw(&mut cv, s as f32 * bar.cfg.size);
             if debug {
                 eprintln!("nothing-bar: draw {:.3} ms ({motion:?})", t0.elapsed().as_secs_f64() * 1000.0);
             }
@@ -706,8 +711,9 @@ fn main() {
             panel_tick = Instant::now();
             let animating = panel.tick(dt);
             let s = app.scale.max(1) as u32;
-            pcv.resize(panel::SURFACE_W * s, panel::SURFACE_H * s);
-            panel.draw(&mut pcv, s as f32);
+            let (pw, ph) = panel_size(&bar.cfg);
+            pcv.resize(pw * s, ph * s);
+            panel.draw(&mut pcv, s as f32 * bar.cfg.size);
             let c = app.cc.as_mut().unwrap();
             let layer = c.panel.clone();
             if present(&layer, app.scale, &mut pool, &pcv, &mut panel_last, &qh, animating) {
@@ -796,10 +802,11 @@ fn open_cc(app: &mut App, shell: &LayerShell, compositor: &CompositorState, view
 
     let panel = shell.create_layer_surface(qh, compositor.create_surface(qh), Layer::Overlay, Some("nothing-bar-panel"), None);
     panel.set_anchor(edge | Anchor::RIGHT);
-    panel.set_size(panel::SURFACE_W, panel::SURFACE_H);
+    let (pw, ph) = panel_size(cfg);
+    panel.set_size(pw, ph);
     // The surface has a transparent margin for the shadow; pull it in so the card sits 6 px from the bar and 8 px
     // from the screen edge.
-    let m = panel::MARGIN as i32;
+    let m = (panel::MARGIN * cfg.size).round() as i32;
     if cfg.position.at_top() {
         panel.set_margin(6 - m, 8 - m, 0, 0);
     } else {
@@ -834,16 +841,27 @@ fn turbo() -> bool {
     hypr::request("getoption animations:enabled").is_some_and(|r| r.contains("bool: false") || r.contains("int: 0"))
 }
 
+/// The control centre surface in logical px at the configured size.
+fn panel_size(cfg: &config::Config) -> (u32, u32) {
+    ((panel::SURFACE_W as f32 * cfg.size).round() as u32, (panel::SURFACE_H as f32 * cfg.size).round() as u32)
+}
+
+/// The bar's height in logical px at the configured size.
+fn bar_height(cfg: &config::Config) -> u32 {
+    (cfg.height as f32 * cfg.size).round() as u32
+}
+
 /// Anchors and sizes the bar for its position and shape (floating and island shapes sit off the edge).
 fn place(layer: &LayerSurface, cfg: &config::Config, shape: config::Shape) {
     use config::Shape;
     let top = cfg.position.at_top();
     layer.set_anchor(if top { Anchor::TOP } else { Anchor::BOTTOM } | Anchor::LEFT | Anchor::RIGHT);
-    layer.set_size(0, cfg.height);
+    layer.set_size(0, bar_height(cfg));
+    let z = cfg.size;
     let (edge, side) = match shape {
         Shape::Strip => (0, 0),
-        Shape::Floating => (6, 8),
-        Shape::Islands | Shape::Island => (5, 6),
+        Shape::Floating => ((6.0 * z) as i32, (8.0 * z) as i32),
+        Shape::Islands | Shape::Island => ((5.0 * z) as i32, (6.0 * z) as i32),
     };
     if top {
         layer.set_margin(edge, side, 0, side);
@@ -851,7 +869,7 @@ fn place(layer: &LayerSurface, cfg: &config::Config, shape: config::Shape) {
         layer.set_margin(0, side, edge, side);
     }
     // Auto-hide reserves no space: windows use the full height and the bar slides over them.
-    layer.set_exclusive_zone(if cfg.position == config::Position::AutoHide { 0 } else { cfg.height as i32 });
+    layer.set_exclusive_zone(if cfg.position == config::Position::AutoHide { 0 } else { bar_height(cfg) as i32 });
 }
 
 /// Auto-hide: while tucked away only a thin strip along the top edge takes the pointer; otherwise the whole bar.

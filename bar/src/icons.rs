@@ -13,9 +13,7 @@ pub enum Icon {
     Sun,
     Bolt,
     Gpu,
-    Chev,
     Bell,
-    Power,
     Play,
     Pause,
     Prev,
@@ -43,9 +41,7 @@ fn parts(i: Icon) -> &'static [Part] {
         Icon::Sun => &[Circle(12.0, 12.0, 4.0, false), Stroke("M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5")],
         Icon::Bolt => &[Fill("M13 2L4 14h7l-1 8 9-12h-7z")],
         Icon::Gpu => &[Rect(3.0, 7.0, 18.0, 10.0, 1.5), Circle(9.0, 12.0, 2.5, false), Stroke("M14 10h4M14 14h4")],
-        Icon::Chev => &[Stroke("M6 9l6 6 6-6")],
         Icon::Bell => &[Stroke("M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"), Stroke("M10 20.5h4")],
-        Icon::Power => &[Stroke("M12 3v8M7 6.3a8 8 0 1 0 10 0")],
         Icon::Play => &[Fill("M7 5l12 7-12 7z")],
         Icon::Pause => &[Rect(6.0, 5.0, 4.0, 14.0, 0.0), Rect(14.0, 5.0, 4.0, 14.0, 0.0)],
         Icon::Prev => &[Fill("M19 5L9 12l10 7zM5 5h3v14H5z")],
@@ -286,7 +282,7 @@ mod tests {
 
     #[test]
     fn every_icon_parses() {
-        for icon in [Icon::Wifi, Icon::WifiOff, Icon::Eth, Icon::Vol, Icon::Mute, Icon::Sun, Icon::Bolt, Icon::Gpu, Icon::Chev, Icon::Bell, Icon::Power, Icon::Play, Icon::Pause, Icon::Prev, Icon::Next, Icon::Bt, Icon::Mic, Icon::MicOff] {
+        for icon in [Icon::Wifi, Icon::WifiOff, Icon::Eth, Icon::Vol, Icon::Mute, Icon::Sun, Icon::Bolt, Icon::Gpu, Icon::Bell, Icon::Play, Icon::Pause, Icon::Prev, Icon::Next, Icon::Bt, Icon::Mic, Icon::MicOff] {
             for p in parts(icon) {
                 if let Part::Stroke(d) | Part::Fill(d) = p {
                     assert!(parse(d).is_some(), "{icon:?}: {d}");

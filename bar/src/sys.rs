@@ -70,11 +70,15 @@ pub fn single_instance() -> Result<std::fs::File, String> {
     use std::os::fd::AsRawFd;
     let dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| "/tmp".into());
     let f = std::fs::File::create(format!("{dir}/nothing-bar.lock")).map_err(|e| e.to_string())?;
-    // SAFETY: flock on a file descriptor we own.
-    if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
-        return Err("already running".into());
+    // A restart (pkill + start) can overlap with the old copy still exiting: wait for it a little.
+    for _ in 0..30 {
+        // SAFETY: flock on a file descriptor we own.
+        if unsafe { libc::flock(f.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+            return Ok(f);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
     }
-    Ok(f)
+    Err("already running".into())
 }
 
 /// Local wall-clock time: (hour, minute, second, weekday 0=Sun, day, month 0..11).

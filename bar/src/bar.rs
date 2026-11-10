@@ -507,7 +507,7 @@ impl Bar {
         // ---- left: workspaces, then app · title, then media
         let (la, ldy) = self.cascade(0, s);
         let mut x = self.draw_workspaces(cv, pad, base + ldy, px, cap, h, s, la);
-        x += 4.0 * s;
+        x += if matches!(self.cfg.workspaces, WsStyle::Block | WsStyle::Pill) { 18.0 * s } else { 14.0 * s };
         let (fg, dim) = (self.fg, self.dim);
         // In islands the left pill must not reach the clock's pill.
         let limit = cx - if shape == Shape::Islands { 44.0 * s } else { 24.0 * s };
@@ -515,7 +515,7 @@ impl Bar {
         let mt = self.media_t.get(now);
         let misz = (px * 0.95).round();
         let label = self.track.as_ref().map(|t| t.label()).unwrap_or_default();
-        let label_w = cv.fonts.width(Weight::Regular, px, &label).min(260.0 * s);
+        let label_w = cv.fonts.width(Weight::Regular, px, &label).min(300.0 * s);
         let media_w = if self.track.is_some() { (3.0 * misz + 3.0 * 8.0 * s + label_w + 16.0 * s) * mt } else { 0.0 };
         let title_limit = (limit - media_w).max(x);
         if !self.class.is_empty() && x < title_limit {
@@ -541,8 +541,10 @@ impl Bar {
                 self.hits.push((mx - 3.0 * s, mx + misz + 3.0 * s, hit));
                 mx += misz + 8.0 * s;
             }
+            let full = cv.fonts.width(Weight::Regular, px, &label);
             let end = (mx + label_w).min(limit);
-            cv.text(&label, mx, base + ldy, px, Weight::Regular, dim.alpha(a), Some((0.0, end)), 24.0 * s);
+            let fade = if mx + full > end { 24.0 * s } else { 0.0 };
+            cv.text(&label, mx, base + ldy, px, Weight::Regular, dim.alpha(a), Some((0.0, end + if fade > 0.0 { 0.0 } else { 1.0 })), fade);
             x = x.max(end);
             if let Some(p) = track.progress() {
                 let ly = if top { h - 2.0 * s } else { 0.0 };
@@ -571,7 +573,11 @@ impl Bar {
     /// Width the workspace indicator takes (for centring the island).
     fn ws_width(&self, cv: &Canvas, px: f32, s: f32) -> f32 {
         let dots = self.cfg.workspaces == WsStyle::Dots;
-        let gap = if dots { 7.0 * s } else { 10.0 * s };
+        let gap = match self.cfg.workspaces {
+            WsStyle::Dots => 7.0 * s,
+            WsStyle::Block | WsStyle::Pill => 15.0 * s,
+            _ => 10.0 * s,
+        };
         self.ws
             .iter()
             .map(|w| {
@@ -590,7 +596,11 @@ impl Bar {
         let style = self.cfg.workspaces;
         let (fg, light) = (self.fg, self.cfg.material == Material::Light);
         let ink = if light { WHITE } else { Rgba::hex(0x111111) };
-        let gap = if style == WsStyle::Dots { 7.0 * s } else { 10.0 * s };
+        let gap = match style {
+            WsStyle::Dots => 7.0 * s,
+            WsStyle::Block | WsStyle::Pill => 15.0 * s, // the block/pill reach past the number
+            _ => 10.0 * s,
+        };
         let breathe = 0.65 + 0.35 * (now * std::f32::consts::TAU / 1.8).cos();
         // Layout first, so the sliding pill can go behind the numbers.
         let mut slots = Vec::with_capacity(self.ws.len());

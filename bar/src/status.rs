@@ -129,13 +129,28 @@ pub fn battery() -> Option<Battery> {
     Some(Battery { percent, charging: status.trim() == "Charging" })
 }
 
-/// True while the NVIDIA GPU is powered up (runtime PM "active"). Reading this never wakes it, unlike nvidia-smi.
-pub fn dgpu_awake() -> bool {
-    let Ok(dir) = std::fs::read_dir("/sys/bus/pci/devices") else { return false };
-    dir.flatten().map(|e| e.path()).any(|p| {
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Dgpu {
+    Asleep,
+    Awake,
+    /// The card is there but no driver is bound: it can neither work nor power down.
+    NoDriver,
+    Absent,
+}
+
+/// The NVIDIA GPU's state from sysfs. Reading this never wakes it, unlike nvidia-smi.
+pub fn dgpu() -> Dgpu {
+    let Ok(dir) = std::fs::read_dir("/sys/bus/pci/devices") else { return Dgpu::Absent };
+    for p in dir.flatten().map(|e| e.path()) {
         let read = |f: &str| std::fs::read_to_string(p.join(f)).unwrap_or_default();
-        read("vendor").trim() == "0x10de" && read("class").starts_with("0x03") && read("power/runtime_status").trim() == "active"
-    })
+        if read("vendor").trim() == "0x10de" && read("class").starts_with("0x03") {
+            if !p.join("driver").exists() {
+                return Dgpu::NoDriver;
+            }
+            return if read("power/runtime_status").trim() == "active" { Dgpu::Awake } else { Dgpu::Asleep };
+        }
+    }
+    Dgpu::Absent
 }
 
 #[cfg(test)]

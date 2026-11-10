@@ -86,6 +86,9 @@ pub struct Panel {
     pub bright: Option<f32>,
     pub track: Option<Track>,
     pub graphs: Graphs,
+    pub gpu: crate::status::Dgpu,
+    /// Wired connection (shown on the NETWORKS row instead of a Wi-Fi name).
+    pub wired: bool,
     pub notes: Vec<Note>,
     pub cfg: Config,
 }
@@ -106,6 +109,8 @@ impl Panel {
             bright: None,
             track: None,
             graphs: Graphs::default(),
+            gpu: crate::status::Dgpu::Absent,
+            wired: false,
             notes: Vec::new(),
             cfg,
         }
@@ -168,11 +173,7 @@ impl Panel {
         if t <= 0.0 {
             return;
         }
-        let (x0, y0) = (MARGIN * s, MARGIN * s - (1.0 - t) * 10.0 * s);
-        let w = W * s;
-        let mut hits = std::mem::take(&mut self.hits);
-        let mut d = Draw { cv, s, x0, y: y0 + PAD * s, w, a: t, hits: &mut hits, pointer: self.pointer, now: self.now };
-        // Content first into a measuring pass would be cleaner; the height is known per page instead.
+        // The card's height is known per page (rather than measured in a separate pass).
         let h = match self.page {
             Page::Main => main_height(self.track.is_some(), self.graphs.dgpu_awake) * s,
             Page::Settings => (PAD * 2.0 + 30.0 + self.cfg.rows().len() as f32 * 30.0) * s,
@@ -180,6 +181,14 @@ impl Panel {
             Page::Bluetooth => (PAD * 2.0 + 30.0 + self.state.devices.len().max(1) as f32 * 30.0) * s,
             Page::Notifications => (PAD * 2.0 + 30.0 + self.notes.len().clamp(1, MAX_NOTES) as f32 * 30.0) * s,
         };
+        // Under a top bar the card hangs from the top of the surface and drops in; above a bottom bar it sits on the
+        // surface's bottom edge and rises in.
+        let slide = (1.0 - t) * 10.0 * s;
+        let y0 = if self.cfg.position.at_top() { MARGIN * s - slide } else { cv.pix.height() as f32 - MARGIN * s - h + slide };
+        let x0 = MARGIN * s;
+        let w = W * s;
+        let mut hits = std::mem::take(&mut self.hits);
+        let mut d = Draw { cv, s, x0, y: y0 + PAD * s, w, a: t, hits: &mut hits, pointer: self.pointer, now: self.now };
         // Soft shadow: a few widening, faint rings below the panel.
         for i in 0..6 {
             let g = (i as f32 + 1.0) * 2.5 * s;
@@ -235,19 +244,29 @@ impl Panel {
             (if st.mic_muted { Icon::MicOff } else { Icon::Mic }, "MIC", !st.mic_muted, PHit::Mic),
             (Icon::Bolt, "TURBO", self.turbo, PHit::Turbo),
         ]);
-        let active = st.networks.iter().find(|n| n.active).map(|n| n.ssid.clone()).unwrap_or_else(|| if st.wifi_on { "—".into() } else { "OFF".into() });
+        let active = st.networks.iter().find(|n| n.active).map(|n| n.ssid.clone()).unwrap_or_else(|| {
+            if self.wired {
+                "ETHERNET".into()
+            } else if st.wifi_on {
+                "NOT CONNECTED".into()
+            } else {
+                "OFF".into()
+            }
+        });
         d.row("NETWORKS", &format!("{active}  ›"), PHit::Networks, WHITE);
         let connected = st.devices.iter().filter(|x| x.connected).count();
         d.row("DEVICES", &format!("{}  ›", if st.bt_on { format!("{connected} CONNECTED") } else { "OFF".into() }), PHit::Devices, WHITE);
         d.gap(4.0);
         let cur = PROFILES.iter().position(|(_, id)| *id == st.profile);
         d.segments(&PROFILES.map(|(l, _)| l), cur);
-        let gpu = if self.graphs.dgpu_awake {
-            self.graphs.dgpu.last().map_or("AWAKE".to_string(), |w| format!("AWAKE · {w:.0} W"))
-        } else {
-            "ASLEEP".to_string()
+        use crate::status::Dgpu;
+        let (gpu, gpu_c) = match self.gpu {
+            Dgpu::Awake => (self.graphs.dgpu.last().map_or("AWAKE".to_string(), |w| format!("AWAKE · {w:.0} W")), RED),
+            Dgpu::Asleep => ("ASLEEP".to_string(), GREY),
+            Dgpu::NoDriver => ("NO DRIVER · CAN'T SLEEP".to_string(), RED),
+            Dgpu::Absent => ("NOT FOUND".to_string(), GREY),
         };
-        d.info(Icon::Gpu, "RTX 4060", &gpu, if self.graphs.dgpu_awake { RED } else { GREY });
+        d.info(Icon::Gpu, "RTX 4060", &gpu, gpu_c);
         d.gap(4.0);
         let (vol, muted) = self.vol.unwrap_or((0.0, false));
         d.slider(if muted { Icon::Mute } else { Icon::Vol }, "VOLUME", vol / 100.0, Slider::Volume);
@@ -479,8 +498,9 @@ impl Draw<'_> {
         let b = self.baseline(self.y, h, 10.0);
         self.text(label, x, b, 10.0, Weight::Regular, GREY);
         self.text_right(value.as_deref().unwrap_or("—"), x + iw, b, 10.0, WHITE);
-        let (gx, gw) = (x + 46.0 * s, iw - 46.0 * s - 70.0 * s);
+        let (gx, gw) = (x + 46.0 * s, iw - 46.0 * s - 80.0 * s);
         let (gy, gh) = (self.y + 4.0 * s, h - 8.0 * s);
+        self.cv.round_rect(gx, gy + gh - 1.0 * s, gw, 1.0 * s, 0.5 * s, TILE_BG.alpha(self.a * 1.5));
         let vals: Vec<f32> = series.0.iter().copied().collect();
         if vals.len() >= 2 {
             let top = max.unwrap_or_else(|| vals.iter().copied().fold(1e-3, f32::max));
@@ -513,7 +533,7 @@ impl Draw<'_> {
         let b = self.baseline(self.y, h, 10.0);
         self.text(label, x, b, 10.0, Weight::Regular, GREY);
         self.text_right(value, x + iw, b, 10.0, WHITE);
-        let (gx, gw) = (x + 46.0 * s, iw - 46.0 * s - 70.0 * s);
+        let (gx, gw) = (x + 46.0 * s, iw - 46.0 * s - 80.0 * s);
         let cells = 20;
         let cw = gw / cells as f32;
         for i in 0..cells {
