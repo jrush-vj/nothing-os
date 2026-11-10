@@ -21,6 +21,7 @@ local turbo = false
 local function toggle_turbo()
     turbo = not turbo
     hl.config({ animations = { enabled = not turbo } })
+    hl.exec_cmd("pkill -USR1 -f jarvis-wall.py") -- pause / resume the live wallpaper
     hl.exec_cmd("notify-send -a nothing 'TURBO " .. (turbo and "ON" or "OFF") .. "'")
 end
 

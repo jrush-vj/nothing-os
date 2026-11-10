@@ -54,6 +54,28 @@ Then log out and in. `install-root.sh` removes the CachyOS Noctalia desktop if p
 | `Print` | screenshot region (saved + copied) |
 | `SUPER+F12` | turbo: animations off |
 
+## Live JARVIS wallpaper
+
+`wallpaper/jarvis-wall.py` puts the JARVIS holographic core (`jarvis-core.js`, from jarvis-main) on the Wayland
+background layer with GTK4 + WebKitGTK, and feeds its HUD live CPU, RAM and network data. The core's state follows
+load (idle, thinking above 35% CPU, executing above 70%). `jarvis-core.js` is not in this repo:
+
+```sh
+JARVIS_CORE=~/code/jarvis-main/core/web bash install.sh
+```
+
+Measured on the LOQ 15IRX9 (Intel iGPU, 1920x1080 @ 144 Hz):
+
+| | |
+|---|---|
+| Render | Intel iGPU only (Mesa EGL forced, the RTX 4060 stays asleep) |
+| Frame rate | 72 fps at full resolution, exactly half the refresh, so pacing is even |
+| CPU | ~60% of one core while visible; ~1% under a fullscreen window (auto-pause) |
+| RAM | ~630 MB (WebKit) |
+
+`SUPER+F12` (turbo) pauses it. Knobs: `JARVIS_WALL_FPS` (custom cap for faster GPUs), `JARVIS_WALL_QUALITY`
+(`high`/`low`), `JARVIS_WALL_HUD=0`. Set `WALLPAPER_MODE = "dots"` in `settings.lua` for the static dot grid.
+
 ## Fonts
 
 [Doto](https://fonts.google.com/specimen/Doto) (dot matrix), [Space Grotesk](https://fonts.google.com/specimen/Space+Grotesk)

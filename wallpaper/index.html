@@ -1,0 +1,74 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+@font-face { font-family: "Rajdhani"; font-weight: 500; src: url("fonts/rajdhani-medium.ttf") format("truetype"); }
+@font-face { font-family: "Rajdhani"; font-weight: 600; src: url("fonts/rajdhani-semibold.ttf") format("truetype"); }
+@font-face { font-family: "Rajdhani"; font-weight: 700; src: url("fonts/rajdhani-bold.ttf") format("truetype"); }
+html, body { margin: 0; height: 100%; overflow: hidden; background: #05070b; }
+#core { position: fixed; inset: 0; }
+</style>
+</head>
+<body>
+<div id="core"></div>
+<script>
+// Runs before the core starts its render loop. ?fps=N caps the loop (0 = WebKit's even divisor of the display).
+(() => {
+  const q = new URLSearchParams(location.search);
+
+  // Time stands still while paused. Otherwise the core's fps meter counts the pause as one very slow frame and
+  // permanently drops to a lower resolution, and the animation jumps on resume.
+  const realNow = performance.now.bind(performance);
+  let pausedAt = 0, pausedTotal = 0;
+  performance.now = () => (pausedAt || realNow()) - pausedTotal;
+  window.__wallClock = {
+    pause() { if (!pausedAt) pausedAt = realNow(); },
+    resume() { if (pausedAt) { pausedTotal += realNow() - pausedAt; pausedAt = 0; } },
+  };
+  const raf = window.requestAnimationFrame.bind(window);
+  const fps = Number(q.get("fps")) || 0;
+  let last = 0, frames = 0, since = performance.now(), js = 0;
+  window.requestAnimationFrame = (cb) => raf(function wait(t) {
+    if (fps && t - last < 1000 / fps - 1) return raf(wait);
+    last = t;
+    frames++;
+    if (t - since >= 5000) { // report real fps and JS time per frame to the host log every 5s
+      document.title = `jarvis-wall:fps:${Math.round((frames * 1000) / (t - since))} js:${(js / frames).toFixed(1)}ms`;
+      frames = 0;
+      js = 0;
+      since = t;
+    }
+    const s = performance.now();
+    cb(t);
+    js += performance.now() - s;
+  });
+})();
+</script>
+<script type="module">
+import { createJarvisCore } from "./jarvis-core.js";
+
+// Surface the core's adaptive-quality messages ("now rendering at 80% resolution") in the host log.
+const info = console.info.bind(console);
+console.info = (...a) => { if (String(a[0]).startsWith("jarvis-core")) document.title = "jarvis-wall:" + a.join(" "); info(...a); };
+
+let core = null;
+try {
+  const q = new URLSearchParams(location.search);
+  core = createJarvisCore(document.getElementById("core"), { hud: q.get("hud") !== "0", quality: q.get("quality") || "high" });
+} catch (e) {
+  document.title = "jarvis-wall:error:" + e; // the host logs title changes
+}
+
+// Called by jarvis-wall.py every couple of seconds.
+window.jarvisWall = {
+  telemetry: (t) => core?.setTelemetry(t),
+  state: (s) => { if (core && core.state !== s) core.setState(s); },
+  pause: (p) => {
+    if (p) { core?.setPaused(true); window.__wallClock.pause(); }
+    else { window.__wallClock.resume(); core?.setPaused(false); }
+  },
+};
+</script>
+</body>
+</html>
