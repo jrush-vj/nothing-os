@@ -1,18 +1,18 @@
--- slate: a minimal flat Hyprland desktop, written entirely in Lua.
+-- nothing-os: a Nothing Phone styled Hyprland desktop, written entirely in Lua.
 --
---   slate/palette.lua   colours and fonts (the single source of truth)
---   slate/settings.lua  apps, display, workspaces
---   slate/apps.lua      renders waybar, fuzzel, mako, kitty, hyprlock, hypridle, GTK and Qt
---                       configs from the palette, so one edit recolours the whole desktop
+--   nothing/palette.lua   colours and fonts (the single source of truth)
+--   nothing/settings.lua  apps, display, workspaces, idle
+--   nothing/apps.lua      renders waybar, fuzzel, mako, kitty, hyprlock, hypridle, GTK, Qt
+--                         and the dot-grid wallpaper from the palette
 --
--- Reload with SUPER+SHIFT+R. Keybind cheatsheet: SUPER+/.
-require("slate.palette")
-require("slate.settings")
-require("slate.env")
-require("slate.look")
-require("slate.motion")
-require("slate.input")
-require("slate.keys")
-require("slate.rules")
-require("slate.apps")
-require("slate.autostart")
+-- Reload: SUPER+SHIFT+R. Keybind cheatsheet: SUPER+/.
+require("nothing.palette")
+require("nothing.settings")
+require("nothing.env")
+require("nothing.look")
+require("nothing.motion")
+require("nothing.input")
+require("nothing.keys")
+require("nothing.rules")
+require("nothing.apps")
+require("nothing.autostart")

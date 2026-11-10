@@ -5,10 +5,9 @@ for _, m in ipairs({
     { title = "^(Open|Open File|Save As|Choose Files|Authentication Required|File Operation Progress|Confirm to replace files)$" },
     { class = "^(org.pulseaudio.pavucontrol|nm-connection-editor|xdg-desktop-portal-gtk|hyprland-share-picker|hyprpolkitagent)$" },
     { class = "^(.*dialog.*)$" },
-    { class = "^(slate-float)$" },
 }) do float(m) end
 hl.window_rule({ match = { float = true }, persistent_size = true })
-hl.window_rule({ match = { class = "^(slate-float)$" }, center = true, size = { "monitor_w*0.5", "monitor_h*0.6" } })
+hl.window_rule({ match = { class = "^(org.pulseaudio.pavucontrol)$" }, center = true, size = { "monitor_w*0.4", "monitor_h*0.5" } })
 
 -- Picture-in-picture pinned on top
 hl.window_rule({
@@ -26,6 +25,3 @@ hl.window_rule({ name = "no-maximize", match = { class = ".*" }, suppress_event 
 
 -- XWayland drag ghosts must not steal focus
 hl.window_rule({ name = "xwayland-drag", match = { class = "^$", title = "^$", xwayland = true, float = true, fullscreen = false, pin = false }, no_focus = true })
-
--- Launcher and notifications appear instantly
-hl.layer_rule({ name = "instant", match = { namespace = "^(launcher|notifications|selection)$" }, no_anim = true })

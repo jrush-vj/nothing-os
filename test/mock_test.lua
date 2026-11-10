@@ -1,13 +1,13 @@
 -- Offline check: runs the whole rice against a fake `hl` and inspects rendered files.
--- usage: HOME=$(mktemp -d) lua test/mock_test.lua path/to/hypr
+-- usage: HOME=$(mktemp -d) lua test/mock_test.lua hypr
 local dir = assert(arg[1], "pass the hypr config dir")
 package.path = dir .. "/?.lua;" .. package.path
+os.execute("mkdir -p '" .. os.getenv("HOME") .. "/.cache'")
 
-local binds, execs, configs = {}, {}, 0
+local binds, configs = {}, 0
 local function any() return setmetatable({}, { __index = function() return any() end, __call = function() return {} end }) end
 hl = setmetatable({
-    bind = function(k, a, o) binds[#binds + 1] = k; assert(type(k) == "string") end,
-    exec_cmd = function(c) execs[#execs + 1] = c end,
+    bind = function(k) binds[#binds + 1] = k; assert(type(k) == "string") end,
     config = function() configs = configs + 1 end,
     get_config = function() return 1.0 end,
     on = function(_, fn) assert(type(fn) == "function") end,
@@ -25,7 +25,12 @@ for _, rel in ipairs(files) do
     assert(not s:find("%${"), "unfilled placeholder in " .. rel .. ": " .. (s:match("%${[%w_]+}") or ""))
 end
 
+-- wallpaper tile: valid binary PPM of the declared size
+local w = assert(io.open(WALLPAPER, "rb"), "wallpaper not rendered"):read("*a")
+local sx, sy, body = w:match("^P6\n(%d+) (%d+)\n255\n(.*)$")
+assert(sx and #body == sx * sy * 3, "bad PPM tile")
+
 local seen = {}
 for _, k in ipairs(binds) do assert(not seen[k], "duplicate bind: " .. k); seen[k] = true end
-assert(io.open(home .. "/.cache/slate-keys.txt"), "cheatsheet missing")
-print(("ok: %d binds, %d config blocks, %d files rendered"):format(#binds, configs, #files))
+assert(io.open(home .. "/.cache/nothing-keys.txt"), "cheatsheet missing")
+print(("ok: %d binds, %d config blocks, %d files + %sx%s wallpaper tile"):format(#binds, configs, #files, sx, sy))

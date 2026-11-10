@@ -6,14 +6,14 @@ local run   = function(cmd) return hl.dsp.exec_cmd(cmd) end
 -- On-screen feedback: mako draws the progress bar, the sync hint replaces the previous bubble
 local NOTIFY = "notify-send -a osd -t 1200 -h string:x-canonical-private-synchronous:osd "
 local OSD = {
-    volume     = NOTIFY .. [[-h int:value:$(wpctl get-volume @DEFAULT_AUDIO_SINK@ | awk '{print int($2*100)}') "volume$(wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -q MUTED && echo ' muted')"]],
-    mic        = NOTIFY .. [["mic$(wpctl get-volume @DEFAULT_AUDIO_SOURCE@ | grep -q MUTED && echo ' muted' || echo ' live')"]],
-    brightness = NOTIFY .. [[-h int:value:$(brightnessctl -m | cut -d, -f4 | tr -d %) brightness]],
+    volume     = NOTIFY .. [[-h int:value:$(wpctl get-volume @DEFAULT_AUDIO_SINK@ | awk '{print int($2*100)}') "VOLUME$(wpctl get-volume @DEFAULT_AUDIO_SINK@ | grep -q MUTED && echo ' · MUTED')"]],
+    mic        = NOTIFY .. [["MIC$(wpctl get-volume @DEFAULT_AUDIO_SOURCE@ | grep -q MUTED && echo ' · MUTED' || echo ' · LIVE')"]],
+    brightness = NOTIFY .. [[-h int:value:$(brightnessctl -m | cut -d, -f4 | tr -d %) BRIGHTNESS]],
 }
 local function with_osd(cmd, kind) return run(cmd .. " && " .. OSD[kind]) end
 
 local function shot(grim_args)
-    return run(([[mkdir -p ~/Pictures/Screenshots && f=~/Pictures/Screenshots/$(date +%F_%H-%M-%S).png && grim ARGS "$f" && wl-copy < "$f" && notify-send -a slate -i "$f" "screenshot saved" "$f"]]):gsub("ARGS", grim_args, 1))
+    return run(([[mkdir -p ~/Pictures/Screenshots && f=~/Pictures/Screenshots/$(date +%F_%H-%M-%S).png && grim ARGS "$f" && wl-copy < "$f" && notify-send -a nothing -i "$f" "SCREENSHOT" "$f"]]):gsub("ARGS", grim_args, 1))
 end
 
 -- Turbo: animations off for games and battery
@@ -21,7 +21,7 @@ local turbo = false
 local function toggle_turbo()
     turbo = not turbo
     hl.config({ animations = { enabled = not turbo } })
-    hl.exec_cmd("notify-send -a slate 'turbo " .. (turbo and "on" or "off") .. "'")
+    hl.exec_cmd("notify-send -a nothing 'TURBO " .. (turbo and "ON" or "OFF") .. "'")
 end
 
 local function zoom(step)
@@ -78,7 +78,7 @@ local keys = {
     { "SHIFT + S",       "send to scratchpad",        hl.dsp.window.move({ workspace = "special" }) },
 
     { "system" },
-    { "V",               "clipboard history",         run([[cliphist list | fuzzel --dmenu --prompt "clip  " | cliphist decode | wl-copy]]) },
+    { "V",               "clipboard history",         run([[cliphist list | fuzzel --dmenu --prompt "CLIPBOARD  " | cliphist decode | wl-copy]]) },
     { "comma",           "dismiss notifications",     run("makoctl dismiss --all") },
     { "SHIFT + comma",   "restore notification",      run("makoctl restore") },
     { "A",               "do not disturb",            run("makoctl mode -t dnd") },
@@ -94,14 +94,14 @@ local keys = {
     { "SHIFT + C",       "colour picker",             run("hyprpicker -a") },
     { "equal",           "zoom in",                   function() zoom(0.3) end,  { repeating = true } },
     { "minus",           "zoom out",                  function() zoom(-0.3) end, { repeating = true } },
-    { "slash",           "this cheatsheet",           run("fuzzel --dmenu --prompt 'keys  ' --width 60 --lines 22 < " .. HOME .. "/.cache/slate-keys.txt > /dev/null") },
+    { "slash",           "this cheatsheet",           run("fuzzel --dmenu --prompt 'KEYS  ' --width 60 --lines 22 < " .. HOME .. "/.cache/nothing-keys.txt > /dev/null") },
 }
 
 local sheet = {}
 for _, k in ipairs(keys) do
     local combo, desc, action, opts = k[1], k[2], k[3], k[4] or {}
     if not desc then
-        sheet[#sheet + 1] = "── " .. combo .. " ──"
+        sheet[#sheet + 1] = "── " .. combo:upper() .. " ──"
     else
         local full = opts.bare and combo or (SUPER .. " + " .. combo)
         sheet[#sheet + 1] = string.format("%-24s %s", full:gsub("mouse:272", "LMB"):gsub("mouse:273", "RMB"), desc)
@@ -130,5 +130,5 @@ local hw = {
 }
 for _, h in ipairs(hw) do hl.bind(h[1], h[2], { locked = true, repeating = h[3] or false }) end
 
-local f = io.open(HOME .. "/.cache/slate-keys.txt", "w")
+local f = io.open(HOME .. "/.cache/nothing-keys.txt", "w")
 if f then f:write(table.concat(sheet, "\n") .. "\n"); f:close() end
