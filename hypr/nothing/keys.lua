@@ -24,6 +24,8 @@ local function toggle_turbo()
     hl.exec_cmd("pkill -USR1 -x nothing-bar") -- the bar re-reads animations:enabled and stops its own
     hl.exec_cmd("notify-send -a nothing 'TURBO " .. (turbo and "ON" or "OFF") .. "'")
 end
+-- Global so the bar's control centre can run it: `hyprctl eval "TOGGLE_TURBO()"`.
+TOGGLE_TURBO = toggle_turbo
 
 local function zoom(step)
     local z = hl.get_config("cursor:zoom_factor") + step

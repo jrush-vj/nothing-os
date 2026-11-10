@@ -7,8 +7,9 @@ use std::time::Instant;
 #[derive(Clone, Debug, PartialEq)]
 pub struct Net {
     pub wifi: bool,
-    /// Download rate, bytes per second.
+    /// Download / upload rates, bytes per second.
     pub rx_rate: f64,
+    pub tx_rate: f64,
 }
 
 /// The interface of the default route (the one traffic actually uses).
@@ -21,7 +22,7 @@ fn default_iface(route: &str) -> Option<String> {
 }
 
 pub struct NetMeter {
-    last: Option<(Instant, String, u64)>,
+    last: Option<(Instant, String, u64, u64)>,
 }
 
 impl NetMeter {
@@ -33,14 +34,18 @@ impl NetMeter {
     pub fn sample(&mut self) -> Option<Net> {
         let iface = default_iface(&std::fs::read_to_string("/proc/net/route").ok()?)?;
         let base = format!("/sys/class/net/{iface}");
-        let rx: u64 = std::fs::read_to_string(format!("{base}/statistics/rx_bytes")).ok()?.trim().parse().ok()?;
+        let read = |f: &str| -> Option<u64> { std::fs::read_to_string(format!("{base}/statistics/{f}")).ok()?.trim().parse().ok() };
+        let (rx, tx) = (read("rx_bytes")?, read("tx_bytes")?);
         let now = Instant::now();
-        let rate = match &self.last {
-            Some((t, i, r)) if *i == iface => rx.saturating_sub(*r) as f64 / now.duration_since(*t).as_secs_f64().max(0.001),
-            _ => 0.0,
+        let (rx_rate, tx_rate) = match &self.last {
+            Some((t, i, r, x)) if *i == iface => {
+                let dt = now.duration_since(*t).as_secs_f64().max(0.001);
+                (rx.saturating_sub(*r) as f64 / dt, tx.saturating_sub(*x) as f64 / dt)
+            }
+            _ => (0.0, 0.0),
         };
-        self.last = Some((now, iface, rx));
-        Some(Net { wifi: std::path::Path::new(&format!("{base}/wireless")).exists(), rx_rate: rate })
+        self.last = Some((now, iface, rx, tx));
+        Some(Net { wifi: std::path::Path::new(&format!("{base}/wireless")).exists(), rx_rate, tx_rate })
     }
 }
 

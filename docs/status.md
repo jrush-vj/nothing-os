@@ -7,10 +7,14 @@
   network rate, brightness, volume (PipeWire events), battery + charging sweep, DGPU/TURBO, hover pill, media
   (playerctl) with slide-in and progress line, live config file, hide/show, installer + autostart. 23 unit tests.
 - Running on the LOQ in place of Waybar: ~5 MB RSS, draw ~0.2 ms/frame, ~0.5% of one core idle.
+- Slice 4: control centre (click the status cluster): Wi-Fi/BT/mic/turbo tiles, networks and devices pages,
+  power profile, RTX 4060 status, volume/brightness sliders (drag or scroll), media card, graphs (CPU, RAM, temp,
+  iGPU, 4060 watts, network, disk), session buttons (click twice), bar settings page that writes the config.
+  Frosted panel + click-catcher surface. 30 unit tests. Rendering verified on the LOQ; clicks not yet exercised
+  by hand (no input injection on the box).
 
 ## Next
-- Slice 4: control centre panel (second layer surface, frosted, 22 px, drop + fade 180 ms): Wi-Fi/BT/mic/turbo,
-  power profile, RTX 4060 status, sliders, media card, graphs, session (click twice), settings page. Tooltips.
+- Tooltips (short, after a hover delay).
 - Slice 5: bell + notification panel (makoctl), mako restyle; tray (StatusNotifierItem) behind the chevron.
 - Slice 6: remaining settings: shapes (floating, islands, island), auto-hide / shrink, light material,
   other workspace styles.

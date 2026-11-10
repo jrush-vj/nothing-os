@@ -70,8 +70,11 @@ The design came out of four rounds of picking options: [docs/bar-spec.md](docs/b
   right-click opens the mixer; click CPU/RAM for btop. A hover pill glides between items.
 - Settings: `~/.config/nothing-bar/config` (see [bar/config.example](bar/config.example)), applied as soon as the
   file is saved: height, top/bottom, material (solid, translucent, frosted, clear, fade), clock format, font.
+- Control centre (click the status cluster): Wi-Fi, Bluetooth, mic and turbo toggles, network and device lists,
+  power profile, RTX 4060 status, volume/brightness sliders, media card, live graphs (CPU, RAM, temperature, iGPU,
+  4060, network, disk), lock/logout/reboot/shutdown (click twice), and a bar settings page that writes the config.
 - `SUPER+SHIFT+B` hides/shows it (SIGUSR2); turbo (`SUPER+F12`) stops its animations too.
-- In progress: control centre, notification panel, tray, tooltips, and the other shapes ([docs/plan.md](docs/plan.md)).
+- In progress: notification panel, tray, tooltips, and the other shapes ([docs/plan.md](docs/plan.md)).
   Set `BAR = "waybar"` in `settings.lua` to go back to Waybar.
 
 Tests: `cargo test --manifest-path bar/Cargo.toml` (some read /proc, so run them on Linux).
