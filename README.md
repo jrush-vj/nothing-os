@@ -13,7 +13,7 @@ reflowing tiles share one curve so nothing overlaps.
 | Part | Tool |
 |---|---|
 | Compositor | Hyprland (Lua config) |
-| Bar | Waybar: workspace dots, dot-matrix clock, power disc |
+| Bar | nothing-bar: a Rust layer-shell bar (`bar/`); Waybar as a fallback |
 | Launcher, clipboard, power menu, cheatsheet | fuzzel |
 | Notifications and volume/brightness OSD | mako |
 | Lock / idle | hyprlock, hypridle |
@@ -23,7 +23,7 @@ reflowing tiles share one curve so nothing overlaps.
 ## One palette, whole desktop
 
 `hypr/nothing/palette.lua` is the only place colours and fonts live. On every load, `hypr/nothing/apps.lua`
-renders the Waybar, fuzzel, mako, kitty, hyprlock, hypridle, GTK 3/4 and Qt (kdeglobals) configs and the
+renders the Waybar (fallback bar), fuzzel, mako, kitty, hyprlock, hypridle, GTK 3/4 and Qt (kdeglobals) configs and the
 wallpaper tile from it. Change a colour, press `SUPER+SHIFT+R`, and everything follows.
 
 ## Install (Arch / CachyOS)
@@ -54,10 +54,32 @@ Then log out and in. `install-root.sh` removes the CachyOS Noctalia desktop if p
 | `Print` | screenshot region (saved + copied) |
 | `SUPER+F12` | turbo: animations off |
 
+## nothing-bar
+
+`bar/` is the top bar, written in Rust for this rice: a Wayland layer-shell surface drawn with tiny-skia, talking
+to Hyprland's sockets directly. It draws only while something moves (at the display's refresh rate) and nothing
+when idle. On the LOQ 15IRX9: ~5 MB of RAM, a frame in ~0.2 ms, ~0.5% of one core on average.
+The design came out of four rounds of picking options: [docs/bar-spec.md](docs/bar-spec.md).
+
+- Left: workspaces in use (active one red with a spring "pop", urgent ones breathe), `App · title` (fades out when
+  long), and media controls with `Artist — Title` while something plays; a red progress line runs along the bar.
+- Centre: the clock; the changing digit rolls.
+- Right: `DGPU` while the RTX 4060 is awake, `TURBO` while turbo is on, CPU/RAM, network + download rate,
+  brightness, volume, a five-cell battery (red under 20%, a sweep while charging).
+- Mouse: click a workspace or scroll over them to switch; scroll on volume/brightness; middle-click volume mutes,
+  right-click opens the mixer; click CPU/RAM for btop. A hover pill glides between items.
+- Settings: `~/.config/nothing-bar/config` (see [bar/config.example](bar/config.example)), applied as soon as the
+  file is saved: height, top/bottom, material (solid, translucent, frosted, clear, fade), clock format, font.
+- `SUPER+SHIFT+B` hides/shows it (SIGUSR2); turbo (`SUPER+F12`) stops its animations too.
+- In progress: control centre, notification panel, tray, tooltips, and the other shapes ([docs/plan.md](docs/plan.md)).
+  Set `BAR = "waybar"` in `settings.lua` to go back to Waybar.
+
+Tests: `cargo test --manifest-path bar/Cargo.toml` (some read /proc, so run them on Linux).
+
 ## Fonts
 
 [Doto](https://fonts.google.com/specimen/Doto) (dot matrix), [Space Grotesk](https://fonts.google.com/specimen/Space+Grotesk)
-and Space Mono Nerd Font, all under the SIL Open Font License. Nothing's own Ndot and NType are not included:
+Space Mono Nerd Font and JetBrains Mono (the bar), all under the SIL Open Font License. Nothing's own Ndot and NType are not included:
 they are licensed for Nothing brand materials only. If you own them, set `FONT.dot` in `palette.lua`.
 
 ## Test

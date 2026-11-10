@@ -1,0 +1,14 @@
+# nothing-bar settings. Changes apply as soon as the file is saved.
+
+# 16..64 px
+height = 28
+# top | bottom
+position = top
+# solid | translucent | frosted | clear | fade   (frosted/translucent use Hyprland's blur behind the bar)
+material = solid
+# hh:mm | hh:mm:ss | date | 12h
+clock = hh:mm
+# the 1 px line along the bar's edge: on | off
+hairline = on
+font = JetBrains Mono
+font_px = 12

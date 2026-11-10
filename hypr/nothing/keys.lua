@@ -21,6 +21,7 @@ local turbo = false
 local function toggle_turbo()
     turbo = not turbo
     hl.config({ animations = { enabled = not turbo } })
+    hl.exec_cmd("pkill -USR1 -x nothing-bar") -- the bar re-reads animations:enabled and stops its own
     hl.exec_cmd("notify-send -a nothing 'TURBO " .. (turbo and "ON" or "OFF") .. "'")
 end
 
@@ -82,7 +83,7 @@ local keys = {
     { "comma",           "dismiss notifications",     run("makoctl dismiss --all") },
     { "SHIFT + comma",   "restore notification",      run("makoctl restore") },
     { "A",               "do not disturb",            run("makoctl mode -t dnd") },
-    { "SHIFT + B",       "hide / show bar",           run("pkill -SIGUSR1 -x waybar") },
+    { "SHIFT + B",       "hide / show bar",           run(BAR == "waybar" and "pkill -SIGUSR1 -x waybar" or "pkill -USR2 -x nothing-bar") },
     { "Escape",          "lock",                      run("loginctl lock-session") },
     { "BackSpace",       "power menu",                run(POWER_MENU) },
     { "SHIFT + R",       "reload desktop",            run("hyprctl reload") },

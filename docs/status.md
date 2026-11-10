@@ -1,0 +1,20 @@
+# Status
+
+## Done
+- Bar Lab: four rounds of design questions -> [bar-spec.md](bar-spec.md) (2026-11-10).
+- nothing-bar slices 1–3: layer surface + tiny-skia + JetBrains Mono, animation core (springs, tweens, frame-driven
+  only while moving), workspaces (pop, grow in/out, urgent breathe, click/scroll), app · title, clock roll, CPU/RAM,
+  network rate, brightness, volume (PipeWire events), battery + charging sweep, DGPU/TURBO, hover pill, media
+  (playerctl) with slide-in and progress line, live config file, hide/show, installer + autostart. 23 unit tests.
+- Running on the LOQ in place of Waybar: ~5 MB RSS, draw ~0.2 ms/frame, ~0.5% of one core idle.
+
+## Next
+- Slice 4: control centre panel (second layer surface, frosted, 22 px, drop + fade 180 ms): Wi-Fi/BT/mic/turbo,
+  power profile, RTX 4060 status, sliders, media card, graphs, session (click twice), settings page. Tooltips.
+- Slice 5: bell + notification panel (makoctl), mako restyle; tray (StatusNotifierItem) behind the chevron.
+- Slice 6: remaining settings: shapes (floating, islands, island), auto-hide / shrink, light material,
+  other workspace styles.
+
+## Blocked / found
+- The RTX 4060 has no driver bound (nvidia module loaded, `nvidia-smi`: no devices) so it sits in D0 and never
+  sleeps; the bar's DGPU indicator therefore shows all the time. Needs a look at the NVIDIA driver setup.

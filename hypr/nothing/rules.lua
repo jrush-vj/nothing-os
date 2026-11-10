@@ -20,6 +20,9 @@ hl.window_rule({
 hl.window_rule({ match = { class = "^(steam_app.*|gamescope)$" }, workspace = "name:gaming", content = "game", decorate = false, fullscreen_state = 2 })
 hl.window_rule({ match = { content = "game" }, workspace = "name:gaming" })
 
+-- nothing-bar: blur behind it when its material is translucent/frosted (no effect on the solid default)
+hl.layer_rule({ match = { namespace = "^nothing-bar$" }, blur = true, ignore_alpha = 0.05 })
+
 -- Tiling decides sizes, not apps
 hl.window_rule({ name = "no-maximize", match = { class = ".*" }, suppress_event = "maximize" })
 
