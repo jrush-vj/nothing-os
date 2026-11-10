@@ -80,6 +80,15 @@ enum PanelInput {
     Scroll(f64, f64, f64),
 }
 
+/// A tooltip under the bar: its own small overlay surface, sized to the text.
+struct Tip {
+    layer: LayerSurface,
+    text: String,
+    size: (u32, u32),
+    configured: bool,
+    drawn: bool,
+}
+
 /// The control centre's surfaces while it exists.
 struct Cc {
     panel: LayerSurface,
@@ -116,6 +125,7 @@ struct App {
     panel_pointer: Option<(f64, f64)>,
     panel_moved: bool,
     catcher_clicked: bool,
+    tip: Option<Tip>,
     exit: bool,
 }
 
@@ -176,6 +186,7 @@ fn main() {
         panel_pointer: None,
         panel_moved: false,
         catcher_clicked: false,
+        tip: None,
         exit: false,
     };
     while !app.configured {
@@ -244,6 +255,8 @@ fn main() {
     let mut next_cc = Instant::now();
     let mut last_slider_set: Option<(panel::Slider, f32)> = None;
     let mut debug_open = std::env::var("NOTHING_BAR_OPEN").ok();
+    let mut hover_since: Option<(bar::Hit, Instant)> = None;
+    let mut tip_cv = canvas::Canvas::new(1, 1, load_fonts(&bar.cfg.font));
 
     while !app.exit && !sys::QUIT.load(Ordering::Relaxed) {
         let now = Instant::now();
@@ -505,6 +518,57 @@ fn main() {
                 PanelInput::Press(..) => {}
             }
         }
+        // ---------------------------------------------------------------- tooltip
+        let hovered = if panel.is_open() || !app.clicks.is_empty() { None } else { bar.tooltip() };
+        match (&hovered, hover_since) {
+            (Some((hit, ..)), Some((h, _))) if *hit == h => {}
+            (Some((hit, ..)), _) => {
+                hover_since = Some((*hit, now));
+                app.tip = None;
+            }
+            (None, _) => {
+                hover_since = None;
+                app.tip = None;
+            }
+        }
+        if let (Some((_, cx, text)), Some((_, since))) = (&hovered, hover_since)
+            && now.duration_since(since) >= Duration::from_millis(500)
+            && app.tip.as_ref().is_none_or(|t| &t.text != text)
+        {
+            let s = app.scale.max(1) as f32;
+            let w = (tip_cv.fonts.width(canvas::Weight::Regular, 11.0 * s, text) / s + 24.0).ceil() as u32;
+            let h = 26u32;
+            let left = ((cx / s) - w as f32 / 2.0).clamp(6.0, app.size.0 as f32 - w as f32 - 6.0);
+            let layer = layer_shell.create_layer_surface(&qh, compositor.create_surface(&qh), Layer::Overlay, Some("nothing-bar-tooltip"), None);
+            let edge = if bar.cfg.position == config::Position::Top { Anchor::TOP } else { Anchor::BOTTOM };
+            layer.set_anchor(edge | Anchor::LEFT);
+            layer.set_size(w, h);
+            match bar.cfg.position {
+                config::Position::Top => layer.set_margin(4, 0, 0, left as i32),
+                config::Position::Bottom => layer.set_margin(0, 0, 4, left as i32),
+            }
+            layer.set_keyboard_interactivity(KeyboardInteractivity::None);
+            layer.commit();
+            app.tip = Some(Tip { layer, text: text.clone(), size: (w, h), configured: false, drawn: false });
+        }
+        if let Some(t) = &mut app.tip
+            && t.configured
+            && !t.drawn
+        {
+            let s = app.scale.max(1);
+            tip_cv.resize(t.size.0 * s as u32, t.size.1 * s as u32);
+            let sf = s as f32;
+            tip_cv.clear(canvas::Rgba(0.0, 0.0, 0.0, 0.0));
+            let (w, h) = (tip_cv.pix.width() as f32, tip_cv.pix.height() as f32);
+            tip_cv.round_rect(0.0, 0.0, w, h, 9.0 * sf, canvas::Rgba::hex(0x0d0d0d).alpha(0.92));
+            tip_cv.stroke_round_rect(0.5, 0.5, w - 1.0, h - 1.0, 9.0 * sf, 1.0, canvas::Rgba(1.0, 1.0, 1.0, 0.1));
+            let base = ((h + tip_cv.fonts.cap_height(canvas::Weight::Regular, 11.0 * sf)) / 2.0).round();
+            tip_cv.text(&t.text, 12.0 * sf, base, 11.0 * sf, canvas::Weight::Regular, bar::WHITE, None, 0.0);
+            let mut none = Vec::new();
+            present(&t.layer, app.scale, &mut pool, &tip_cv, &mut none, &qh, false);
+            t.drawn = true;
+        }
+
         // ---------------------------------------------------------------- timers
         if now >= next_clock {
             bar.set_clock();
@@ -622,6 +686,11 @@ fn main() {
         let mut wake = next_clock.min(next_stats).min(next_config);
         if panel.is_open() {
             wake = wake.min(next_cc);
+        }
+        if let Some((_, since)) = hover_since
+            && app.tip.is_none()
+        {
+            wake = wake.min(since + Duration::from_millis(510));
         }
         if app.dirty && !app.frame_pending && app.configured && !app.hidden {
             wake = slow_until.unwrap_or(now).min(wake);
@@ -844,6 +913,8 @@ impl LayerShellHandler for App {
     fn closed(&mut self, _: &Connection, _: &QueueHandle<Self>, layer: &LayerSurface) {
         if layer == &self.layer {
             self.exit = true;
+        } else if self.tip.as_ref().is_some_and(|t| &t.layer == layer) {
+            self.tip = None;
         } else {
             self.cc = None;
         }
@@ -853,6 +924,8 @@ impl LayerShellHandler for App {
             self.size = (c.new_size.0.max(1), c.new_size.1.max(1));
             self.configured = true;
             self.dirty = true;
+        } else if let Some(t) = self.tip.as_mut().filter(|t| &t.layer == layer) {
+            t.configured = true;
         } else if let Some(cc) = &mut self.cc {
             if &cc.panel == layer {
                 cc.configured = true;

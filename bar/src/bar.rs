@@ -579,6 +579,40 @@ impl Bar {
     pub fn hit(&self, x: f32) -> Option<Hit> {
         self.hits.iter().find(|(a, b, _)| x >= *a && x < *b).map(|h| h.2)
     }
+
+    /// The hovered item, its centre x (buffer px) and a short tooltip for it.
+    pub fn tooltip(&self) -> Option<(Hit, f32, String)> {
+        let x = self.hover_x?;
+        let (a, b, hit) = *self.hits.iter().find(|(a, b, _)| x >= *a && x < *b)?;
+        let now = self.now;
+        let text = match hit {
+            Hit::Workspace(id) => format!("Workspace {id} · scroll to switch"),
+            Hit::Stats => format!("CPU {:.0}% · RAM {:.1} G · click for btop", self.cpu.get(now), self.ram.get(now)),
+            Hit::Net => match &self.net {
+                Some(n) => format!(
+                    "{} · {} {} · click for the control centre",
+                    if n.wifi { "Wi-Fi" } else { "Ethernet" },
+                    crate::status::fmt_rate(n.rx_rate),
+                    crate::status::fmt_rate(n.tx_rate).replace('↓', "↑")
+                ),
+                None => "Offline · click for the control centre".into(),
+            },
+            Hit::Brightness => format!("Brightness {:.0}% · scroll to change", self.bright.map_or(0.0, |b| b.target())),
+            Hit::Volume => {
+                let (v, muted) = self.vol.map_or((0.0, false), |(v, m)| (v.target(), m));
+                format!("Volume {v:.0}%{} · scroll · middle-click mutes · right-click mixer", if muted { " (muted)" } else { "" })
+            }
+            Hit::Battery => match self.battery {
+                Some(b) => format!("Battery {:.0}% · {}", b.percent, if b.charging { "charging" } else if b.percent >= 99.0 { "full" } else { "on battery" }),
+                None => return None,
+            },
+            Hit::MediaPrev => "Previous".into(),
+            Hit::MediaToggle => "Play / pause".into(),
+            Hit::MediaNext => "Next".into(),
+            Hit::Bell => format!("{} new notification{}", self.unread, if self.unread == 1 { "" } else { "s" }),
+        };
+        Some((hit, (a + b) / 2.0, text))
+    }
 }
 
 /// "firefox" -> "Firefox", "org.gnome.Nautilus" -> "Nautilus", "kitty" -> "Kitty"

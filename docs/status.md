@@ -16,8 +16,9 @@
 - Slice 5a: bell (unread count, event-driven via dbus-monitor) + notification panel with CLEAR ALL; mako popups
   restyled (JetBrains Mono, frosted, 22 px, slide in from the right). 31 unit tests.
 
+- Tooltips: short, after 0.5 s on the same item, under it (own overlay surface, Hyprland fades it in).
+
 ## Next
-- Tooltips (short, after a hover delay).
 - Tray (StatusNotifierItem) behind the chevron: needs a D-Bus library (zbus) — to be agreed with the user.
 - Slice 6: remaining settings: shapes (floating, islands, island), auto-hide / shrink, light material,
   other workspace styles.

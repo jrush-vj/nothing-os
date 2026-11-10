@@ -76,7 +76,8 @@ The design came out of four rounds of picking options: [docs/bar-spec.md](docs/b
 - `SUPER+SHIFT+B` hides/shows it (SIGUSR2); turbo (`SUPER+F12`) stops its animations too.
 - A bell appears with the number of new notifications; it opens a list with CLEAR ALL. Popups stay with mako,
   styled to match.
-- In progress: tray, tooltips, and the other shapes ([docs/plan.md](docs/plan.md)).
+- Short tooltips after half a second on an item.
+- In progress: tray and the other shapes ([docs/plan.md](docs/plan.md)).
   Set `BAR = "waybar"` in `settings.lua` to go back to Waybar.
 
 Tests: `cargo test --manifest-path bar/Cargo.toml` (some read /proc, so run them on Linux).
