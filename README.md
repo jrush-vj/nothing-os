@@ -58,7 +58,7 @@ Then log out and in. `install-root.sh` removes the CachyOS Noctalia desktop if p
 
 `bar/` is the top bar, written in Rust for this rice: a Wayland layer-shell surface drawn with tiny-skia, talking
 to Hyprland's sockets directly. It draws only while something moves (at the display's refresh rate) and nothing
-when idle. On the LOQ 15IRX9: ~5 MB of RAM, a frame in ~0.2 ms, ~0.5% of one core on average.
+when idle. 32 px tall with 13.8 px text by default. On the LOQ 15IRX9: ~5 MB of RAM, a frame in ~0.2 ms, ~0.5% of one core on average.
 The design came out of four rounds of picking options: [docs/bar-spec.md](docs/bar-spec.md).
 
 - Left: workspaces in use (active one red with a spring "pop", urgent ones breathe), `App · title` (fades out when
@@ -68,8 +68,10 @@ The design came out of four rounds of picking options: [docs/bar-spec.md](docs/b
   brightness, volume, a five-cell battery (red under 20%, a sweep while charging).
 - Mouse: click a workspace or scroll over them to switch; scroll on volume/brightness; middle-click volume mutes,
   right-click opens the mixer; click CPU/RAM for btop. A hover pill glides between items.
-- Settings: `~/.config/nothing-bar/config` (see [bar/config.example](bar/config.example)), applied as soon as the
-  file is saved: height, top/bottom, material (solid, translucent, frosted, clear, fade), clock format, font.
+- Settings: `~/.config/nothing-bar/config` (see [bar/config.example](bar/config.example)) or BAR SETTINGS in the
+  control centre, applied live: shape (strip, floating, three islands, centre island), height, position (top,
+  bottom, auto-hide, shrink to the island while a window is maximized), material (solid, translucent, frosted,
+  clear, fade, light), workspace style (red number, inverted block, red dot, sliding pill, dots), clock format.
 - Control centre (click the status cluster): Wi-Fi, Bluetooth, mic and turbo toggles, network and device lists,
   power profile, RTX 4060 status, volume/brightness sliders, media card, live graphs (CPU, RAM, temperature, iGPU,
   4060, network, disk), lock/logout/reboot/shutdown (click twice), and a bar settings page that writes the config.
@@ -77,7 +79,7 @@ The design came out of four rounds of picking options: [docs/bar-spec.md](docs/b
 - A bell appears with the number of new notifications; it opens a list with CLEAR ALL. Popups stay with mako,
   styled to match.
 - Short tooltips after half a second on an item.
-- In progress: tray and the other shapes ([docs/plan.md](docs/plan.md)).
+- Not yet: the tray, and app icons as a workspace style ([docs/status.md](docs/status.md)).
   Set `BAR = "waybar"` in `settings.lua` to go back to Waybar.
 
 Tests: `cargo test --manifest-path bar/Cargo.toml` (some read /proc, so run them on Linux).

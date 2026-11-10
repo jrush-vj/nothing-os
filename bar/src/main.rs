@@ -25,7 +25,7 @@ mod status;
 mod sys;
 
 use smithay_client_toolkit::{
-    compositor::{CompositorHandler, CompositorState, FrameCallbackData},
+    compositor::{CompositorHandler, CompositorState, FrameCallbackData, Region},
     delegate_registry,
     dispatch2::Dispatch2,
     output::{OutputHandler, OutputState},
@@ -159,7 +159,7 @@ fn main() {
     let viewporter: Option<WpViewporter> = globals.bind(&qh, 1..=1, Noop).ok();
     let surface = compositor.create_surface(&qh);
     let layer = layer_shell.create_layer_surface(&qh, surface, Layer::Top, Some("nothing-bar"), None);
-    place(&layer, &cfg);
+    place(&layer, &cfg, cfg.shape);
     layer.set_keyboard_interactivity(KeyboardInteractivity::None);
     layer.commit();
 
@@ -256,6 +256,10 @@ fn main() {
     let mut last_slider_set: Option<(panel::Slider, f32)> = None;
     let mut debug_open = std::env::var("NOTHING_BAR_OPEN").ok();
     let mut hover_since: Option<(bar::Hit, Instant)> = None;
+    // What the bar surface is currently placed as, and the auto-hide input state.
+    let mut placed = (bar.cfg.height, bar.cfg.position, bar.cfg.shape);
+    let mut strip_input = false;
+    let mut hide_at: Option<Instant> = None;
     let mut tip_cv = canvas::Canvas::new(1, 1, load_fonts(&bar.cfg.font));
 
     while !app.exit && !sys::QUIT.load(Ordering::Relaxed) {
@@ -320,7 +324,7 @@ fn main() {
                 last_frame.clear();
             } else {
                 // Remapping starts over: commit without a buffer, then draw after the new configure.
-                place(&app.layer, &bar.cfg);
+                place(&app.layer, &bar.cfg, bar.shape());
                 app.configured = false;
                 app.layer.commit();
             }
@@ -518,6 +522,41 @@ fn main() {
                 PanelInput::Press(..) => {}
             }
         }
+        // ---------------------------------------------------------------- geometry and auto-hide
+        let want = (bar.cfg.height, bar.cfg.position, bar.shape());
+        if want != placed && !app.hidden {
+            place(&app.layer, &bar.cfg, want.2);
+            app.layer.commit();
+            placed = want;
+            app.dirty = true;
+        }
+        if bar.cfg.position == config::Position::AutoHide {
+            let inside = app.pointer_x.is_some() || panel.is_open();
+            if inside {
+                hide_at = None;
+                if !bar.revealed() {
+                    bar.set_revealed(true);
+                    app.dirty = true;
+                }
+            } else if bar.revealed() {
+                let t = *hide_at.get_or_insert(now + Duration::from_millis(600));
+                if now >= t {
+                    bar.set_revealed(false);
+                    hide_at = None;
+                    app.dirty = true;
+                }
+            }
+        } else if !bar.revealed() {
+            bar.set_revealed(true);
+            app.dirty = true;
+        }
+        let want_strip = bar.cfg.position == config::Position::AutoHide && !bar.revealed();
+        if want_strip != strip_input {
+            set_input(&app.layer, &compositor, app.size.0, want_strip);
+            app.layer.commit();
+            strip_input = want_strip;
+        }
+
         // ---------------------------------------------------------------- tooltip
         let hovered = if panel.is_open() || !app.clicks.is_empty() { None } else { bar.tooltip() };
         match (&hovered, hover_since) {
@@ -540,12 +579,13 @@ fn main() {
             let h = 26u32;
             let left = ((cx / s) - w as f32 / 2.0).clamp(6.0, app.size.0 as f32 - w as f32 - 6.0);
             let layer = layer_shell.create_layer_surface(&qh, compositor.create_surface(&qh), Layer::Overlay, Some("nothing-bar-tooltip"), None);
-            let edge = if bar.cfg.position == config::Position::Top { Anchor::TOP } else { Anchor::BOTTOM };
-            layer.set_anchor(edge | Anchor::LEFT);
+            let top = bar.cfg.position.at_top();
+            layer.set_anchor(if top { Anchor::TOP } else { Anchor::BOTTOM } | Anchor::LEFT);
             layer.set_size(w, h);
-            match bar.cfg.position {
-                config::Position::Top => layer.set_margin(4, 0, 0, left as i32),
-                config::Position::Bottom => layer.set_margin(0, 0, 4, left as i32),
+            if top {
+                layer.set_margin(4, 0, 0, left as i32);
+            } else {
+                layer.set_margin(0, 0, 4, left as i32);
             }
             layer.set_keyboard_interactivity(KeyboardInteractivity::None);
             layer.commit();
@@ -692,6 +732,9 @@ fn main() {
         {
             wake = wake.min(since + Duration::from_millis(510));
         }
+        if let Some(t) = hide_at {
+            wake = wake.min(t);
+        }
         if app.dirty && !app.frame_pending && app.configured && !app.hidden {
             wake = slow_until.unwrap_or(now).min(wake);
         }
@@ -708,12 +751,9 @@ fn main() {
 
 /// Applies a (changed) config: re-places the bar if its geometry changed, reloads the font if needed.
 fn apply_config(app: &mut App, bar: &mut bar::Bar, cv: &mut canvas::Canvas, c: config::Config) {
-    if (c.height, c.position) != (bar.cfg.height, bar.cfg.position) {
-        place(&app.layer, &c);
-        app.layer.commit();
-    }
     let refont = c.font != bar.cfg.font;
     bar.cfg = c;
+    // Geometry (height, position, shape) is re-placed by the main loop when it differs from what's placed.
     if refont && let Ok(f) = canvas::Fonts::load(&bar.cfg.font) {
         cv.fonts = f;
     }
@@ -745,10 +785,7 @@ fn set_slider(panel: &mut panel::Panel, bar: &mut bar::Bar, which: panel::Slider
 }
 
 fn open_cc(app: &mut App, shell: &LayerShell, compositor: &CompositorState, viewporter: &WpViewporter, qh: &QueueHandle<App>, cfg: &config::Config) {
-    let edge = match cfg.position {
-        config::Position::Top => Anchor::TOP,
-        config::Position::Bottom => Anchor::BOTTOM,
-    };
+    let edge = if cfg.position.at_top() { Anchor::TOP } else { Anchor::BOTTOM };
     // Created first, so it sits below the panel on the overlay layer.
     let catcher = shell.create_layer_surface(qh, compositor.create_surface(qh), Layer::Overlay, Some("nothing-bar-catcher"), None);
     catcher.set_anchor(Anchor::TOP | Anchor::BOTTOM | Anchor::LEFT | Anchor::RIGHT);
@@ -763,9 +800,10 @@ fn open_cc(app: &mut App, shell: &LayerShell, compositor: &CompositorState, view
     // The surface has a transparent margin for the shadow; pull it in so the card sits 6 px from the bar and 8 px
     // from the screen edge.
     let m = panel::MARGIN as i32;
-    match cfg.position {
-        config::Position::Top => panel.set_margin(6 - m, 8 - m, 0, 0),
-        config::Position::Bottom => panel.set_margin(0, 8 - m, 6 - m, 0),
+    if cfg.position.at_top() {
+        panel.set_margin(6 - m, 8 - m, 0, 0);
+    } else {
+        panel.set_margin(0, 8 - m, 6 - m, 0);
     }
     panel.set_keyboard_interactivity(KeyboardInteractivity::None);
     panel.commit();
@@ -796,14 +834,37 @@ fn turbo() -> bool {
     hypr::request("getoption animations:enabled").is_some_and(|r| r.contains("bool: false") || r.contains("int: 0"))
 }
 
-fn place(layer: &LayerSurface, cfg: &config::Config) {
-    let edge = match cfg.position {
-        config::Position::Top => Anchor::TOP,
-        config::Position::Bottom => Anchor::BOTTOM,
-    };
-    layer.set_anchor(edge | Anchor::LEFT | Anchor::RIGHT);
+/// Anchors and sizes the bar for its position and shape (floating and island shapes sit off the edge).
+fn place(layer: &LayerSurface, cfg: &config::Config, shape: config::Shape) {
+    use config::Shape;
+    let top = cfg.position.at_top();
+    layer.set_anchor(if top { Anchor::TOP } else { Anchor::BOTTOM } | Anchor::LEFT | Anchor::RIGHT);
     layer.set_size(0, cfg.height);
-    layer.set_exclusive_zone(cfg.height as i32);
+    let (edge, side) = match shape {
+        Shape::Strip => (0, 0),
+        Shape::Floating => (6, 8),
+        Shape::Islands | Shape::Island => (5, 6),
+    };
+    if top {
+        layer.set_margin(edge, side, 0, side);
+    } else {
+        layer.set_margin(0, side, edge, side);
+    }
+    // Auto-hide reserves no space: windows use the full height and the bar slides over them.
+    layer.set_exclusive_zone(if cfg.position == config::Position::AutoHide { 0 } else { cfg.height as i32 });
+}
+
+/// Auto-hide: while tucked away only a thin strip along the top edge takes the pointer; otherwise the whole bar.
+fn set_input(layer: &LayerSurface, compositor: &CompositorState, width: u32, strip: bool) {
+    let surface = layer.wl_surface();
+    if strip {
+        if let Ok(region) = Region::new(compositor) {
+            region.add(0, 0, width as i32, 2);
+            surface.set_input_region(Some(region.wl_region()));
+        }
+    } else {
+        surface.set_input_region(None);
+    }
 }
 
 /// Copies the pixmap (premultiplied RGBA) into a shm buffer (ARGB8888 = BGRA bytes) and commits it. A frame

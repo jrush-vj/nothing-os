@@ -175,7 +175,7 @@ impl Panel {
         // Content first into a measuring pass would be cleaner; the height is known per page instead.
         let h = match self.page {
             Page::Main => main_height(self.track.is_some(), self.graphs.dgpu_awake) * s,
-            Page::Settings => (PAD * 2.0 + 30.0 + 5.0 * 32.0) * s,
+            Page::Settings => (PAD * 2.0 + 30.0 + self.cfg.rows().len() as f32 * 30.0) * s,
             Page::Wifi => (PAD * 2.0 + 30.0 + self.state.networks.len().max(1) as f32 * 30.0) * s,
             Page::Bluetooth => (PAD * 2.0 + 30.0 + self.state.devices.len().max(1) as f32 * 30.0) * s,
             Page::Notifications => (PAD * 2.0 + 30.0 + self.notes.len().clamp(1, MAX_NOTES) as f32 * 30.0) * s,

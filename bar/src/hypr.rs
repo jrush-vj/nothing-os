@@ -33,6 +33,8 @@ pub struct Snapshot {
     pub title: String,
     /// Window address -> workspace id, to place urgent events.
     pub windows: Vec<(String, i32)>,
+    /// The active window is maximized or fullscreen.
+    pub busy: bool,
 }
 
 /// "workspace 3 (3) on monitor eDP-1:" -> 3
@@ -77,6 +79,7 @@ pub fn snapshot() -> Option<Snapshot> {
         class: field(&win, "class").unwrap_or("").to_string(),
         title: field(&win, "title").unwrap_or("").to_string(),
         windows: parse_clients(&request("clients").unwrap_or_default()),
+        busy: field(&win, "fullscreen").is_some_and(|f| f != "0"),
     })
 }
 
@@ -90,9 +93,9 @@ pub enum Event {
 /// Reads the event socket on a thread and hands relevant events to `send`. Reconnects if Hyprland restarts.
 pub fn watch(send: impl Fn(Event) + Send + 'static) {
     std::thread::spawn(move || {
-        const CHANGED: [&str; 10] = [
+        const CHANGED: [&str; 11] = [
             "workspacev2>>", "createworkspacev2>>", "destroyworkspacev2>>", "openwindow>>", "closewindow>>",
-            "movewindowv2>>", "activewindow>>", "windowtitlev2>>", "focusedmonv2>>", "configreloaded>>",
+            "movewindowv2>>", "activewindow>>", "windowtitlev2>>", "focusedmonv2>>", "configreloaded>>", "fullscreen>>",
         ];
         loop {
             let Some(stream) = dir().and_then(|d| UnixStream::connect(d.join(".socket2.sock")).ok()) else {

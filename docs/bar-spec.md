@@ -9,9 +9,9 @@ the value given is the default.
   turbo (SUPER+F12) turns bar animations off.
 
 ## Look
-- Font: JetBrains Mono for everything, 12 px regular. Labels grey (#999), values white.
+- Font: JetBrains Mono for everything, 13.8 px regular (12 px + 15%, 2026-11-10). Labels grey (#999), values white.
 - Shape (setting): **full-width strip** | floating | three islands | single centre island.
-- Height (setting): 22 | **28** | 34 | 40 px. Position (setting): **top** | bottom | auto-hide | shrink when busy.
+- Height (setting): 24 | 28 | **32** | 36 | 40 px (made 15% bigger after round 4). Position (setting): **top** | bottom | auto-hide | shrink when busy.
 - Bar material (setting): **solid #1a1a1a** | translucent | frosted (Hyprland blur, medium) | transparent | gradient fade | light.
 - Gradient hairline under the bar (1 px, fades out at both ends). Full outline when the shape is floating.
 - Panels: frosted glass, 22 px radius, shadow under panels only (the bar stays flat).

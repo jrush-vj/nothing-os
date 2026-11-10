@@ -17,11 +17,13 @@
   restyled (JetBrains Mono, frosted, 22 px, slide in from the right). 31 unit tests.
 
 - Tooltips: short, after 0.5 s on the same item, under it (own overlay surface, Hyprland fades it in).
+- Slice 6: shapes (strip, floating, islands, island), positions (top, bottom, auto-hide, shrink), light material,
+  workspace styles (red, block, dot, pill, dots), all in the settings page. Bar made 15% bigger: 32 px, 13.8 px text.
+  Verified on the LOQ by screenshots; auto-hide's slide-back-in on hover not exercised (needs the cursor).
 
 ## Next
 - Tray (StatusNotifierItem) behind the chevron: needs a D-Bus library (zbus) — to be agreed with the user.
-- Slice 6: remaining settings: shapes (floating, islands, island), auto-hide / shrink, light material,
-  other workspace styles.
+- App icons as a workspace style (needs icon-theme lookup and SVG/PNG decoding).
 
 ## Blocked / found
 - The RTX 4060 has no driver bound (nvidia module loaded, `nvidia-smi`: no devices) so it sits in D0 and never

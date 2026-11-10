@@ -1,14 +1,18 @@
-# nothing-bar settings. Changes apply as soon as the file is saved.
+# nothing-bar settings. Changes apply as soon as the file is saved (or from the control centre's BAR SETTINGS).
 
-# 16..64 px
-height = 28
-# top | bottom
+# strip | floating | islands | island
+shape = strip
+# 16..64 px (the settings page cycles 24, 28, 32, 36, 40)
+height = 32
+# top | bottom | autohide (slides in at the top edge) | shrink (centre island while a window is maximized)
 position = top
-# solid | translucent | frosted | clear | fade   (frosted/translucent use Hyprland's blur behind the bar)
+# solid | translucent | frosted | clear | fade | light   (translucent/frosted use Hyprland's blur behind the bar)
 material = solid
+# red (red number) | block (inverted block) | dot (red dot under) | pill (sliding red pill) | dots
+workspaces = red
 # hh:mm | hh:mm:ss | date | 12h
 clock = hh:mm
-# the 1 px line along the bar's edge: on | off
+# the 1 px line along the bar's edge (strip shape): on | off
 hairline = on
 font = JetBrains Mono
-font_px = 12
+font_px = 13.8

@@ -7,6 +7,33 @@ use std::time::SystemTime;
 pub enum Position {
     Top,
     Bottom,
+    /// Top, out of the way until the pointer touches the top edge.
+    AutoHide,
+    /// Top; collapses to the centre island while the active window is maximized or fullscreen.
+    Shrink,
+}
+
+impl Position {
+    pub fn at_top(self) -> bool {
+        self != Position::Bottom
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Shape {
+    Strip,
+    Floating,
+    Islands,
+    Island,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum WsStyle {
+    Red,
+    Block,
+    Dot,
+    Pill,
+    Dots,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -17,6 +44,7 @@ pub enum Material {
     Frosted,
     Clear,
     Fade,
+    Light,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -29,6 +57,8 @@ pub enum ClockFormat {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Config {
+    pub shape: Shape,
+    pub workspaces: WsStyle,
     pub height: u32,
     pub position: Position,
     pub material: Material,
@@ -41,13 +71,15 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            height: 28,
+            shape: Shape::Strip,
+            workspaces: WsStyle::Red,
+            height: 32,
             position: Position::Top,
             material: Material::Solid,
             clock: ClockFormat::HhMm,
             hairline: true,
             font: "JetBrains Mono".into(),
-            font_px: 12.0,
+            font_px: 13.8,
         }
     }
 }
@@ -61,26 +93,11 @@ impl Config {
             let (k, v) = (k.trim(), v.trim().trim_matches('"'));
             match k {
                 "height" => c.height = v.parse().ok().filter(|h| (16..=64).contains(h)).unwrap_or(c.height),
-                "position" => match v {
-                    "top" => c.position = Position::Top,
-                    "bottom" => c.position = Position::Bottom,
-                    _ => {}
-                },
-                "material" => match v {
-                    "solid" => c.material = Material::Solid,
-                    "translucent" => c.material = Material::Translucent,
-                    "frosted" => c.material = Material::Frosted,
-                    "clear" => c.material = Material::Clear,
-                    "fade" => c.material = Material::Fade,
-                    _ => {}
-                },
-                "clock" => match v {
-                    "hh:mm" => c.clock = ClockFormat::HhMm,
-                    "hh:mm:ss" => c.clock = ClockFormat::HhMmSs,
-                    "date" => c.clock = ClockFormat::Date,
-                    "12h" => c.clock = ClockFormat::TwelveHour,
-                    _ => {}
-                },
+                "position" => c.position = by_name(&POSITIONS, v).unwrap_or(c.position),
+                "material" => c.material = by_name(&MATERIALS, v).unwrap_or(c.material),
+                "clock" => c.clock = by_name(&CLOCKS, v).unwrap_or(c.clock),
+                "shape" => c.shape = by_name(&SHAPES, v).unwrap_or(c.shape),
+                "workspaces" => c.workspaces = by_name(&WS_STYLES, v).unwrap_or(c.workspaces),
                 "hairline" => c.hairline = v != "off" && v != "false",
                 "font" if !v.is_empty() => c.font = v.to_string(),
                 "font_px" => c.font_px = v.parse().ok().filter(|p| (8.0..=24.0).contains(p)).unwrap_or(c.font_px),
@@ -91,14 +108,28 @@ impl Config {
     }
 }
 
-const HEIGHTS: [u32; 4] = [22, 28, 34, 40];
-const POSITIONS: [(Position, &str); 2] = [(Position::Top, "top"), (Position::Bottom, "bottom")];
-const MATERIALS: [(Material, &str); 5] = [
+const HEIGHTS: [u32; 5] = [24, 28, 32, 36, 40];
+const POSITIONS: [(Position, &str); 4] = [
+    (Position::Top, "top"),
+    (Position::Bottom, "bottom"),
+    (Position::AutoHide, "autohide"),
+    (Position::Shrink, "shrink"),
+];
+const MATERIALS: [(Material, &str); 6] = [
     (Material::Solid, "solid"),
     (Material::Translucent, "translucent"),
     (Material::Frosted, "frosted"),
     (Material::Clear, "clear"),
     (Material::Fade, "fade"),
+    (Material::Light, "light"),
+];
+const SHAPES: [(Shape, &str); 4] = [(Shape::Strip, "strip"), (Shape::Floating, "floating"), (Shape::Islands, "islands"), (Shape::Island, "island")];
+const WS_STYLES: [(WsStyle, &str); 5] = [
+    (WsStyle::Red, "red"),
+    (WsStyle::Block, "block"),
+    (WsStyle::Dot, "dot"),
+    (WsStyle::Pill, "pill"),
+    (WsStyle::Dots, "dots"),
 ];
 const CLOCKS: [(ClockFormat, &str); 4] = [
     (ClockFormat::HhMm, "hh:mm"),
@@ -111,6 +142,10 @@ fn name<T: PartialEq + Copy>(table: &[(T, &'static str)], v: T) -> &'static str 
     table.iter().find(|(t, _)| *t == v).map_or("?", |(_, n)| n)
 }
 
+fn by_name<T: Copy>(table: &[(T, &'static str)], v: &str) -> Option<T> {
+    table.iter().find(|(_, n)| *n == v).map(|(t, _)| *t)
+}
+
 fn next<T: PartialEq + Copy>(table: &[(T, &'static str)], v: T) -> T {
     let i = table.iter().position(|(t, _)| *t == v).unwrap_or(0);
     table[(i + 1) % table.len()].0
@@ -118,11 +153,13 @@ fn next<T: PartialEq + Copy>(table: &[(T, &'static str)], v: T) -> T {
 
 impl Config {
     /// The settings page's rows: (label, current value).
-    pub fn rows(&self) -> [(&'static str, String); 5] {
+    pub fn rows(&self) -> [(&'static str, String); 7] {
         [
+            ("SHAPE", name(&SHAPES, self.shape).to_uppercase()),
             ("HEIGHT", format!("{} PX", self.height)),
             ("POSITION", name(&POSITIONS, self.position).to_uppercase()),
             ("MATERIAL", name(&MATERIALS, self.material).to_uppercase()),
+            ("WORKSPACES", name(&WS_STYLES, self.workspaces).to_uppercase()),
             ("CLOCK", name(&CLOCKS, self.clock).to_uppercase()),
             ("HAIRLINE", if self.hairline { "ON".into() } else { "OFF".into() }),
         ]
@@ -131,36 +168,35 @@ impl Config {
     /// Steps row `i` to its next value.
     pub fn cycle(&mut self, i: usize) {
         match i {
-            0 => self.height = HEIGHTS[(HEIGHTS.iter().position(|h| *h == self.height).map_or(0, |p| p + 1)) % HEIGHTS.len()],
-            1 => self.position = next(&POSITIONS, self.position),
-            2 => self.material = next(&MATERIALS, self.material),
-            3 => self.clock = next(&CLOCKS, self.clock),
-            4 => self.hairline = !self.hairline,
+            0 => self.shape = next(&SHAPES, self.shape),
+            1 => self.height = HEIGHTS[(HEIGHTS.iter().position(|h| *h == self.height).map_or(0, |p| p + 1)) % HEIGHTS.len()],
+            2 => self.position = next(&POSITIONS, self.position),
+            3 => self.material = next(&MATERIALS, self.material),
+            4 => self.workspaces = next(&WS_STYLES, self.workspaces),
+            5 => self.clock = next(&CLOCKS, self.clock),
+            6 => self.hairline = !self.hairline,
             _ => {}
         }
     }
 
     pub fn render(&self) -> String {
-        format!(
-            "# nothing-bar settings (also changed from the control centre). Changes apply when the file is saved.
-             # height 16..64 | position top, bottom | material solid, translucent, frosted, clear, fade
-             # clock hh:mm, hh:mm:ss, date, 12h | hairline on, off
-             height = {}
-position = {}
-material = {}
-clock = {}
-hairline = {}
-font = {}
-font_px = {}
-",
-            self.height,
-            name(&POSITIONS, self.position),
-            name(&MATERIALS, self.material),
-            name(&CLOCKS, self.clock),
-            if self.hairline { "on" } else { "off" },
-            self.font,
-            self.font_px,
-        )
+        [
+            "# nothing-bar settings (also changed from the control centre). Changes apply when the file is saved.".to_string(),
+            "# shape strip, floating, islands, island | height 16..64 | position top, bottom, autohide, shrink".into(),
+            "# material solid, translucent, frosted, clear, fade, light | workspaces red, block, dot, pill, dots".into(),
+            "# clock hh:mm, hh:mm:ss, date, 12h | hairline on, off".into(),
+            format!("shape = {}", name(&SHAPES, self.shape)),
+            format!("height = {}", self.height),
+            format!("position = {}", name(&POSITIONS, self.position)),
+            format!("material = {}", name(&MATERIALS, self.material)),
+            format!("workspaces = {}", name(&WS_STYLES, self.workspaces)),
+            format!("clock = {}", name(&CLOCKS, self.clock)),
+            format!("hairline = {}", if self.hairline { "on" } else { "off" }),
+            format!("font = {}", self.font),
+            format!("font_px = {}", self.font_px),
+        ]
+        .join("\n")
+            + "\n"
     }
 
     pub fn save(&self) -> std::io::Result<()> {
@@ -222,15 +258,19 @@ mod tests {
     #[test]
     fn render_round_trips_and_cycles_wrap() {
         let mut c = Config::default();
-        for i in 0..5 {
+        for i in 0..7 {
             c.cycle(i);
         }
         assert_eq!(Config::parse(&c.render()), c);
-        assert_eq!((c.height, c.position, c.material, c.clock, c.hairline), (34, Position::Bottom, Material::Translucent, ClockFormat::HhMmSs, false));
-        for _ in 0..4 {
-            c.cycle(0);
+        assert!(c.render().lines().all(|l| !l.starts_with(' ')));
+        assert_eq!((c.shape, c.height, c.position, c.material), (Shape::Floating, 36, Position::Bottom, Material::Translucent));
+        assert_eq!((c.workspaces, c.clock, c.hairline), (WsStyle::Block, ClockFormat::HhMmSs, false));
+        for _ in 0..5 {
+            c.cycle(1);
         }
-        assert_eq!(c.height, 34);
+        assert_eq!(c.height, 36);
+        let c = Config::parse("position = autohide\nmaterial = light\nshape = island\nworkspaces = dots");
+        assert_eq!((c.position, c.material, c.shape, c.workspaces), (Position::AutoHide, Material::Light, Shape::Island, WsStyle::Dots));
     }
 
     #[test]

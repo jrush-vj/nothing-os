@@ -2,7 +2,7 @@
 // Layout and drawing happen together every frame (it's ~20 glyphs); `hits` records where things landed for clicks.
 use crate::anim::{Spring, Tween};
 use crate::canvas::{Canvas, Rgba, Weight};
-use crate::config::{ClockFormat, Config, Material, Position};
+use crate::config::{ClockFormat, Config, Material, Position, Shape, WsStyle};
 use crate::hypr::Snapshot;
 use crate::icons::{self, Icon};
 use crate::media::Track;
@@ -92,6 +92,18 @@ pub struct Bar {
     pub hits: Vec<(f32, f32, Hit)>,
     /// The x range of the workspace numbers (scroll there switches workspace).
     pub ws_span: (f32, f32),
+    /// Text colours for the current material (dark or light).
+    fg: Rgba,
+    dim: Rgba,
+    /// The active window is maximized/fullscreen (the "shrink" position collapses to the island).
+    busy: bool,
+    /// Auto-hide: 0 tucked away above the screen edge .. 1 shown.
+    reveal: Spring,
+    /// Where the left content ended last frame (the left island's width).
+    left_end: f32,
+    /// The sliding red pill of the "pill" workspace style.
+    wpill_x: Spring,
+    wpill_w: Spring,
 }
 
 const POP_KICK: f32 = 7.0; // initial scale velocity: peaks at ~1.2x with the medium spring
@@ -130,6 +142,13 @@ impl Bar {
             slow_interval: 1.0 / 30.0,
             hits: Vec::new(),
             ws_span: (0.0, 0.0),
+            fg: WHITE,
+            dim: GREY,
+            busy: false,
+            reveal: Spring::smooth(1.0),
+            left_end: 0.0,
+            wpill_x: Spring::new(0.0),
+            wpill_w: Spring::smooth(0.0),
         }
     }
 
@@ -173,7 +192,7 @@ impl Bar {
             w.leaving = false;
             w.appear.set(1.0);
         }
-        (self.class, self.title, self.windows) = (s.class, s.title, s.windows);
+        (self.class, self.title, self.windows, self.busy) = (s.class, s.title, s.windows, s.busy);
         if self.still {
             self.settle();
         }
@@ -269,6 +288,9 @@ impl Bar {
         self.pill_w.snap(self.pill_w.target);
         self.pill_a.snap(self.pill_a.target());
         self.media_t.snap(self.media_t.target());
+        self.reveal.snap(self.reveal.target);
+        self.wpill_x.snap(self.wpill_x.target);
+        self.wpill_w.snap(self.wpill_w.target);
         self.born = -10.0;
     }
 
@@ -290,6 +312,10 @@ impl Bar {
         self.ws.retain(|w| !(w.leaving && !w.appear.moving() && w.appear.value < 0.01));
         self.pill_x.step(dt);
         self.pill_w.step(dt);
+        self.reveal.step(dt);
+        self.wpill_x.step(dt);
+        self.wpill_w.step(dt);
+        fast |= self.reveal.moving() || self.wpill_x.moving() || self.wpill_w.moving();
         fast |= self.roll.moving(now) || now - self.born < CASCADE[2] + 0.4;
         fast |= self.pill_x.moving() || self.pill_w.moving() || self.pill_a.moving(now);
         slow |= self.cpu.moving(now) || self.ram.moving(now);
@@ -324,54 +350,56 @@ impl Bar {
         (e, (1.0 - e) * -6.0 * s)
     }
 
+    /// The shape actually drawn: "shrink" collapses to the centre island while a window is maximized.
+    pub fn shape(&self) -> Shape {
+        if self.cfg.position == Position::Shrink && self.busy { Shape::Island } else { self.cfg.shape }
+    }
+
+    /// Auto-hide: slide in (true) or tuck away (false).
+    pub fn set_revealed(&mut self, on: bool) {
+        self.reveal.set(if on { 1.0 } else { 0.0 });
+        if self.still {
+            self.reveal.snap(self.reveal.target);
+        }
+    }
+
+    pub fn revealed(&self) -> bool {
+        self.reveal.target > 0.5
+    }
+
+    /// The fill behind the content for the material (None: transparent).
+    fn surface(&self) -> Option<Rgba> {
+        match self.cfg.material {
+            Material::Solid => Some(RAISED),
+            Material::Translucent => Some(RAISED.alpha(0.62)),
+            Material::Frosted => Some(Rgba::hex(0x0d0d0d).alpha(0.55)),
+            Material::Clear | Material::Fade => None,
+            Material::Light => Some(Rgba::hex(0xf2f2f2)),
+        }
+    }
+
     /// Draws the whole bar into `cv` (buffer pixels; `s` = output scale).
     pub fn draw(&mut self, cv: &mut Canvas, s: f32) {
         let (w, h) = (cv.pix.width() as f32, cv.pix.height() as f32);
         let px = self.cfg.font_px * s;
-        let top = self.cfg.position == Position::Top;
-
-        // background
-        match self.cfg.material {
-            Material::Solid => cv.clear(RAISED),
-            Material::Translucent => cv.clear(RAISED.alpha(0.62)),
-            Material::Frosted => cv.clear(Rgba::hex(0x0d0d0d).alpha(0.55)),
-            Material::Clear => cv.clear(Rgba(0.0, 0.0, 0.0, 0.0)),
-            Material::Fade => {
-                cv.clear(Rgba(0.0, 0.0, 0.0, 0.0));
-                for y in 0..h as i32 {
-                    let t = y as f32 / h;
-                    cv.rect(0.0, y as f32, w, 1.0, Rgba(0.0, 0.0, 0.0, if top { 1.0 - t * 0.9 } else { 0.1 + t * 0.9 }));
-                }
-            }
-        }
-        if self.cfg.hairline {
-            cv.hairline(if top { h - 1.0 } else { 0.0 }, 0.0, w, WHITE.alpha(0.45));
-        }
-
+        let top = self.cfg.position.at_top();
+        let light = self.cfg.material == Material::Light;
+        (self.fg, self.dim) = if light { (Rgba::hex(0x111111), Rgba::hex(0x6b6b6b)) } else { (WHITE, GREY) };
+        let hover = if light { Rgba::hex(0xdcdcdc) } else { HOVER };
+        let line = if light { Rgba::hex(0xc8c8c8) } else { Rgba::hex(0x2e2e2e) };
+        let shape = self.shape();
+        let clear = Rgba(0.0, 0.0, 0.0, 0.0);
+        // Pills and floating cards need some fill even with "clear"/"fade" materials.
+        let card = self.surface().unwrap_or(RAISED.alpha(0.62));
         let cap = cv.fonts.cap_height(Weight::Regular, px);
         let base = ((h + cap) / 2.0).round();
-        let pad = 12.0 * s;
+        let pad = if shape == Shape::Islands { 18.0 * s } else { 12.0 * s };
+        let now = self.now;
 
-        // Hover pill, placed from where things were last frame; it glides between items and fades in and out.
-        self.update_pill(s);
-        let pa = self.pill_a.get(self.now);
-        if pa > 0.01 {
-            let ph = h - 8.0 * s;
-            cv.round_rect(self.pill_x.value, (h - ph) / 2.0, self.pill_w.value.max(0.0), ph, 6.0 * s, HOVER.alpha(pa));
-        }
-        self.hits.clear();
-
-        // ---- centre: clock (laid out first; the left side fades out before it)
-        let (ca, cdy) = self.cascade(1, s);
+        // ---- measure the centre and the right cluster first (backgrounds go behind them)
         let cpx = px * 13.0 / 12.0;
         let clock_w = cv.fonts.width(Weight::Bold, cpx, &self.clock);
-        let cx = ((w - clock_w) / 2.0).round();
-        self.draw_clock(cv, cx, base + cdy, cpx, ca);
-
-        // ---- right: status cluster, right-aligned
-        let (ra, rdy) = self.cascade(2, s);
-        let now = self.now;
-        let items = self.status_items();
+        let items = if shape == Shape::Island { Vec::new() } else { self.status_items() };
         let (gap, inner, isz) = (14.0 * s, 5.0 * s, (px * 1.05).round());
         let piece_w = |cv: &Canvas, p: &Piece| match p {
             Piece::Text(t, _) => cv.fonts.width(Weight::Regular, px, t),
@@ -380,7 +408,82 @@ impl Bar {
         };
         let item_w = |cv: &Canvas, ps: &[Piece]| ps.iter().map(|p| piece_w(cv, p)).sum::<f32>() + inner * ps.len().saturating_sub(1) as f32;
         let total: f32 = items.iter().map(|(_, ps)| item_w(cv, ps)).sum::<f32>() + gap * items.len().saturating_sub(1) as f32;
-        let mut x = (w - pad - total).round();
+        let right_x0 = (w - pad - total).round();
+
+        // The island: workspaces, clock and battery in one centred pill.
+        let island_ws = if shape == Shape::Island { self.ws_width(cv, px, s) } else { 0.0 };
+        let island_bat = if self.battery.is_some() { 24.0 * s + gap } else { 0.0 };
+        let island_w = 16.0 * s + island_ws + gap + clock_w + island_bat + 16.0 * s;
+        let island_x = ((w - island_w) / 2.0).round();
+        let cx = if shape == Shape::Island { island_x + 16.0 * s + island_ws + gap } else { ((w - clock_w) / 2.0).round() };
+
+        // ---- background
+        match shape {
+            Shape::Strip => match self.cfg.material {
+                Material::Fade => {
+                    cv.clear(clear);
+                    for y in 0..h as i32 {
+                        let t = y as f32 / h;
+                        cv.rect(0.0, y as f32, w, 1.0, Rgba(0.0, 0.0, 0.0, if top { 1.0 - t * 0.9 } else { 0.1 + t * 0.9 }));
+                    }
+                }
+                _ => cv.clear(self.surface().unwrap_or(clear)),
+            },
+            Shape::Floating => {
+                cv.clear(clear);
+                cv.round_rect(0.0, 0.0, w, h, 10.0 * s, card);
+                cv.stroke_round_rect(0.5, 0.5, w - 1.0, h - 1.0, 10.0 * s, 1.0, line);
+            }
+            Shape::Islands => {
+                cv.clear(clear);
+                let pills = [
+                    (pad - 10.0 * s, self.left_end.max(pad + 20.0 * s) + 10.0 * s),
+                    (cx - 14.0 * s, cx + clock_w + 14.0 * s),
+                    (right_x0 - 12.0 * s, w - pad + 12.0 * s),
+                ];
+                for (a, b) in pills {
+                    cv.round_rect(a, 0.0, b - a, h, h / 2.0, card);
+                    cv.stroke_round_rect(a + 0.5, 0.5, b - a - 1.0, h - 1.0, h / 2.0, 1.0, line);
+                }
+            }
+            Shape::Island => {
+                cv.clear(clear);
+                cv.round_rect(island_x, 0.0, island_w, h, h / 2.0, card);
+                cv.stroke_round_rect(island_x + 0.5, 0.5, island_w - 1.0, h - 1.0, h / 2.0, 1.0, line);
+            }
+        }
+        if self.cfg.hairline && shape == Shape::Strip {
+            cv.hairline(if top { h - 1.0 } else { 0.0 }, 0.0, w, self.fg.alpha(0.45));
+        }
+
+        // Hover pill, placed from where things were last frame; it glides between items and fades in and out.
+        self.update_pill(s);
+        let pa = self.pill_a.get(now);
+        if pa > 0.01 {
+            let ph = h - 8.0 * s;
+            cv.round_rect(self.pill_x.value, (h - ph) / 2.0, self.pill_w.value.max(0.0), ph, 6.0 * s, hover.alpha(pa));
+        }
+        self.hits.clear();
+
+        // ---- centre: clock
+        let (ca, cdy) = self.cascade(1, s);
+        self.draw_clock(cv, cx, base + cdy, cpx, ca);
+
+        if shape == Shape::Island {
+            let (la, ldy) = self.cascade(0, s);
+            self.draw_workspaces(cv, island_x + 16.0 * s, base + ldy, px, cap, h, s, la);
+            if self.battery.is_some() {
+                let bx = cx + clock_w + gap;
+                self.draw_battery(cv, bx, h / 2.0 + ldy, s, la);
+                self.hits.push((bx, bx + 24.0 * s, Hit::Battery));
+            }
+            self.finish(cv, s);
+            return;
+        }
+
+        // ---- right: status cluster, right-aligned
+        let (ra, rdy) = self.cascade(2, s);
+        let mut x = right_x0;
         let mut right_hits = Vec::new();
         for (hit, ps) in &items {
             let x0 = x;
@@ -401,49 +504,28 @@ impl Bar {
             }
         }
 
-        // ---- left: workspaces, then app · title
+        // ---- left: workspaces, then app · title, then media
         let (la, ldy) = self.cascade(0, s);
-        let mut x = pad;
-        let ws_gap = 10.0 * s;
-        let span0 = x;
-        let breathe = 0.65 + 0.35 * (now * std::f32::consts::TAU / 1.8).cos();
-        for i in 0..self.ws.len() {
-            let wsi = &self.ws[i];
-            let a = wsi.appear.value.clamp(0.0, 1.0);
-            let label = wsi.id.to_string();
-            let lw = cv.fonts.width(Weight::Bold, px, &label);
-            let room = (lw + ws_gap) * a;
-            let scale = wsi.pop.value;
-            let mut color = WHITE.mix(RED, wsi.red.get(now));
-            if wsi.urgent {
-                color = RED.alpha(breathe);
-            }
-            let lpx = px * scale;
-            let lw_s = cv.fonts.width(Weight::Bold, lpx, &label);
-            // Fade in only once there's room for the number (grow, then fade).
-            let alpha = ((a - 0.4) / 0.6).clamp(0.0, 1.0) * la;
-            cv.text(&label, x + (lw - lw_s) / 2.0, base + ldy + (scale - 1.0) * cap / 2.0, lpx, Weight::Bold, color.alpha(alpha), None, 0.0);
-            self.hits.push((x - ws_gap / 2.0, x + lw + ws_gap / 2.0, Hit::Workspace(wsi.id)));
-            x += room;
-        }
-        self.ws_span = (span0 - pad, x);
+        let mut x = self.draw_workspaces(cv, pad, base + ldy, px, cap, h, s, la);
         x += 4.0 * s;
-        let limit = cx - 24.0 * s;
+        let (fg, dim) = (self.fg, self.dim);
+        // In islands the left pill must not reach the clock's pill.
+        let limit = cx - if shape == Shape::Islands { 44.0 * s } else { 24.0 * s };
         // Media takes up to `media_w` at the end of the left side; the title gets what's left.
         let mt = self.media_t.get(now);
-        let isz = (px * 0.95).round();
+        let misz = (px * 0.95).round();
         let label = self.track.as_ref().map(|t| t.label()).unwrap_or_default();
         let label_w = cv.fonts.width(Weight::Regular, px, &label).min(260.0 * s);
-        let media_w = if self.track.is_some() { (3.0 * isz + 3.0 * 8.0 * s + label_w + 16.0 * s) * mt } else { 0.0 };
+        let media_w = if self.track.is_some() { (3.0 * misz + 3.0 * 8.0 * s + label_w + 16.0 * s) * mt } else { 0.0 };
         let title_limit = (limit - media_w).max(x);
         if !self.class.is_empty() && x < title_limit {
             let app = pretty_class(&self.class);
             let clip = Some((0.0, title_limit));
-            x = cv.text(&app, x, base + ldy, px, Weight::Bold, WHITE.alpha(la), clip, 24.0 * s);
+            x = cv.text(&app, x, base + ldy, px, Weight::Bold, fg.alpha(la), clip, 24.0 * s);
             let short = short_title(&self.title, &self.class);
             if !short.is_empty() {
-                x = cv.text(" · ", x, base + ldy, px, Weight::Regular, GREY.alpha(la), clip, 24.0 * s);
-                x = cv.text(&short, x, base + ldy, px, Weight::Regular, GREY.alpha(la), clip, 24.0 * s);
+                x = cv.text(" · ", x, base + ldy, px, Weight::Regular, dim.alpha(la), clip, 24.0 * s);
+                x = cv.text(&short, x, base + ldy, px, Weight::Regular, dim.alpha(la), clip, 24.0 * s);
             }
             x = x.min(title_limit);
         }
@@ -452,20 +534,125 @@ impl Bar {
             let e = mt;
             let mut mx = x + 16.0 * s - (1.0 - e) * 16.0 * s;
             let a = la * e;
-            let iy = ((h - isz) / 2.0).round() + ldy;
+            let iy = ((h - misz) / 2.0).round() + ldy;
             let play = if track.playing { Icon::Pause } else { Icon::Play };
             for (icon, hit) in [(Icon::Prev, Hit::MediaPrev), (play, Hit::MediaToggle), (Icon::Next, Hit::MediaNext)] {
-                icons::draw(cv, icon, mx, iy, isz, WHITE.alpha(a));
-                self.hits.push((mx - 3.0 * s, mx + isz + 3.0 * s, hit));
-                mx += isz + 8.0 * s;
+                icons::draw(cv, icon, mx, iy, misz, fg.alpha(a));
+                self.hits.push((mx - 3.0 * s, mx + misz + 3.0 * s, hit));
+                mx += misz + 8.0 * s;
             }
-            cv.text(&label, mx, base + ldy, px, Weight::Regular, GREY.alpha(a), Some((0.0, (mx + label_w).min(limit))), 24.0 * s);
+            let end = (mx + label_w).min(limit);
+            cv.text(&label, mx, base + ldy, px, Weight::Regular, dim.alpha(a), Some((0.0, end)), 24.0 * s);
+            x = x.max(end);
             if let Some(p) = track.progress() {
                 let ly = if top { h - 2.0 * s } else { 0.0 };
-                cv.rect(0.0, ly, (w * p).round(), 2.0 * s, RED.alpha(e));
+                let (lx, lw) = if shape == Shape::Strip { (0.0, w) } else { (pad, (self.left_end - pad).max(0.0)) };
+                cv.rect(lx, ly, (lw * p).round(), 2.0 * s, RED.alpha(e));
             }
         }
+        self.left_end = x;
         self.hits.extend(right_hits);
+        self.finish(cv, s);
+    }
+
+    /// Auto-hide: shifts everything up by the hidden part of the bar.
+    fn finish(&mut self, cv: &mut Canvas, _s: f32) {
+        let hidden = 1.0 - self.reveal.value.clamp(0.0, 1.0);
+        if hidden <= 0.0 {
+            return;
+        }
+        let (w, h) = (cv.pix.width() as usize, cv.pix.height() as usize);
+        let dy = ((hidden * h as f32).round() as usize).min(h);
+        let data = cv.pix.data_mut();
+        data.copy_within(dy * w * 4.., 0);
+        data[(h - dy) * w * 4..].fill(0);
+    }
+
+    /// Width the workspace indicator takes (for centring the island).
+    fn ws_width(&self, cv: &Canvas, px: f32, s: f32) -> f32 {
+        let dots = self.cfg.workspaces == WsStyle::Dots;
+        let gap = if dots { 7.0 * s } else { 10.0 * s };
+        self.ws
+            .iter()
+            .map(|w| {
+                let lw = if dots { 7.0 * s } else { cv.fonts.width(Weight::Bold, px, &w.id.to_string()) };
+                (lw + gap) * w.appear.value.clamp(0.0, 1.0)
+            })
+            .sum::<f32>()
+            .max(gap)
+            - gap
+    }
+
+    /// Draws the workspace indicator in the configured style from x; returns where it ends.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_workspaces(&mut self, cv: &mut Canvas, x0: f32, base: f32, px: f32, cap: f32, h: f32, s: f32, la: f32) -> f32 {
+        let now = self.now;
+        let style = self.cfg.workspaces;
+        let (fg, light) = (self.fg, self.cfg.material == Material::Light);
+        let ink = if light { WHITE } else { Rgba::hex(0x111111) };
+        let gap = if style == WsStyle::Dots { 7.0 * s } else { 10.0 * s };
+        let breathe = 0.65 + 0.35 * (now * std::f32::consts::TAU / 1.8).cos();
+        // Layout first, so the sliding pill can go behind the numbers.
+        let mut slots = Vec::with_capacity(self.ws.len());
+        let mut x = x0;
+        for wsi in &self.ws {
+            let a = wsi.appear.value.clamp(0.0, 1.0);
+            let lw = if style == WsStyle::Dots { 7.0 * s } else { cv.fonts.width(Weight::Bold, px, &wsi.id.to_string()) };
+            slots.push((x, lw, a));
+            x += (lw + gap) * a;
+        }
+        let end = x - gap.min(x - x0);
+        if style == WsStyle::Pill
+            && let Some(i) = self.ws.iter().position(|w| w.id == self.active)
+        {
+            let (sx, lw, _) = slots[i];
+            let (tx, tw) = (sx - 6.0 * s, lw + 12.0 * s);
+            if self.wpill_w.value <= 0.0 || self.still {
+                self.wpill_x.snap(tx);
+                self.wpill_w.snap(tw);
+            } else {
+                self.wpill_x.set(tx);
+                self.wpill_w.set(tw);
+            }
+            let ph = h - 10.0 * s;
+            cv.round_rect(self.wpill_x.value, (h - ph) / 2.0, self.wpill_w.value, ph, ph / 2.0, RED.alpha(la));
+        }
+        let mut hits = Vec::with_capacity(self.ws.len());
+        for (wsi, &(sx, lw, a)) in self.ws.iter().zip(&slots) {
+            let r = wsi.red.get(now);
+            let alpha = ((a - 0.4) / 0.6).clamp(0.0, 1.0) * la;
+            if style == WsStyle::Dots {
+                let c = if wsi.urgent { RED.alpha(breathe) } else { fg.mix(RED, r) };
+                let rad = 3.5 * s * wsi.pop.value;
+                cv.round_rect(sx + lw / 2.0 - rad, h / 2.0 - rad, 2.0 * rad, 2.0 * rad, rad, c.alpha(alpha));
+            } else {
+                let (mut color, scale) = match style {
+                    WsStyle::Block => {
+                        let bh = h - 10.0 * s;
+                        cv.round_rect(sx - 4.0 * s, (h - bh) / 2.0, lw + 8.0 * s, bh, 4.0 * s, fg.alpha(alpha * r));
+                        (fg.mix(ink, r), 1.0)
+                    }
+                    WsStyle::Dot => {
+                        let d = 2.0 * s;
+                        cv.round_rect(sx + lw / 2.0 - d, base + 3.0 * s, 2.0 * d, 2.0 * d, d, RED.alpha(alpha * r));
+                        (fg, 1.0)
+                    }
+                    WsStyle::Pill => (fg.mix(WHITE, r), 1.0),
+                    _ => (fg.mix(RED, r), wsi.pop.value),
+                };
+                if wsi.urgent {
+                    color = RED.alpha(breathe);
+                }
+                let label = wsi.id.to_string();
+                let lpx = px * scale;
+                let lw_s = cv.fonts.width(Weight::Bold, lpx, &label);
+                cv.text(&label, sx + (lw - lw_s) / 2.0, base + (scale - 1.0) * cap / 2.0, lpx, Weight::Bold, color.alpha(alpha), None, 0.0);
+            }
+            hits.push((sx - gap / 2.0, sx + lw + gap / 2.0, Hit::Workspace(wsi.id)));
+        }
+        self.hits.extend(hits);
+        self.ws_span = (x0 - 12.0 * s, end);
+        end
     }
 
     /// The right-hand items, left to right: (what a click hits, pieces).
@@ -483,31 +670,31 @@ impl Bar {
         items.push((
             Some(Hit::Stats),
             vec![
-                Piece::Text("CPU".into(), GREY),
-                Piece::Text(format!("{:<4}", format!("{:.0}%", self.cpu.get(now))), WHITE),
-                Piece::Text("RAM".into(), GREY),
-                Piece::Text(format!("{:<5}", format!("{:.1}G", self.ram.get(now))), WHITE),
+                Piece::Text("CPU".into(), self.dim),
+                Piece::Text(format!("{:<4}", format!("{:.0}%", self.cpu.get(now))), self.fg),
+                Piece::Text("RAM".into(), self.dim),
+                Piece::Text(format!("{:<5}", format!("{:.1}G", self.ram.get(now))), self.fg),
             ],
         ));
         match &self.net {
             Some(n) => items.push((
                 Some(Hit::Net),
-                vec![Piece::Icon(if n.wifi { Icon::Wifi } else { Icon::Eth }, WHITE), Piece::Text(format!("{:<6}", crate::status::fmt_rate(n.rx_rate)), WHITE)],
+                vec![Piece::Icon(if n.wifi { Icon::Wifi } else { Icon::Eth }, self.fg), Piece::Text(format!("{:<6}", crate::status::fmt_rate(n.rx_rate)), self.fg)],
             )),
-            None => items.push((Some(Hit::Net), vec![Piece::Icon(Icon::WifiOff, GREY)])),
+            None => items.push((Some(Hit::Net), vec![Piece::Icon(Icon::WifiOff, self.dim)])),
         }
         if let Some(b) = &self.bright {
-            items.push((Some(Hit::Brightness), vec![Piece::Icon(Icon::Sun, WHITE), Piece::Text(format!("{:<3.0}", b.get(now)), WHITE)]));
+            items.push((Some(Hit::Brightness), vec![Piece::Icon(Icon::Sun, self.fg), Piece::Text(format!("{:<3.0}", b.get(now)), self.fg)]));
         }
         if let Some((v, muted)) = &self.vol {
-            let c = if *muted { GREY } else { WHITE };
+            let c = if *muted { self.dim } else { self.fg };
             items.push((Some(Hit::Volume), vec![Piece::Icon(if *muted { Icon::Mute } else { Icon::Vol }, c), Piece::Text(format!("{:<3.0}", v.get(now)), c)]));
         }
         if self.battery.is_some() {
             items.push((Some(Hit::Battery), vec![Piece::Battery]));
         }
         if self.unread > 0 {
-            items.push((Some(Hit::Bell), vec![Piece::Icon(Icon::Bell, WHITE), Piece::Text(self.unread.min(99).to_string(), WHITE)]));
+            items.push((Some(Hit::Bell), vec![Piece::Icon(Icon::Bell, self.fg), Piece::Text(self.unread.min(99).to_string(), self.fg)]));
         }
         items
     }
@@ -518,7 +705,7 @@ impl Bar {
         let (bw, bh) = (21.0 * s, 10.0 * s);
         let y = (cy - bh / 2.0).round();
         let low = b.percent < 20.0 && !b.charging;
-        let c = if low { RED } else { WHITE };
+        let c = if low { RED } else { self.fg };
         cv.stroke_round_rect(x + 0.5 * s, y + 0.5 * s, bw - s, bh - s, 2.5 * s, s, c.alpha(alpha));
         cv.round_rect(x + bw, y + 3.0 * s, 2.0 * s, bh - 6.0 * s, 0.8 * s, c.alpha(alpha));
         let level = (b.percent / 20.0).ceil().clamp(0.0, 5.0) as usize;
@@ -565,11 +752,11 @@ impl Bar {
             match old {
                 Some(o) => {
                     let mut ob = [0u8; 4];
-                    cv.text(o.encode_utf8(&mut ob), pen, base - rise * r, px, Weight::Bold, WHITE.alpha(alpha * (1.0 - r)), None, 0.0);
-                    cv.text(ch.encode_utf8(&mut buf), pen, base + rise * (1.0 - r), px, Weight::Bold, WHITE.alpha(alpha * r), None, 0.0);
+                    cv.text(o.encode_utf8(&mut ob), pen, base - rise * r, px, Weight::Bold, self.fg.alpha(alpha * (1.0 - r)), None, 0.0);
+                    cv.text(ch.encode_utf8(&mut buf), pen, base + rise * (1.0 - r), px, Weight::Bold, self.fg.alpha(alpha * r), None, 0.0);
                 }
                 None => {
-                    cv.text(ch.encode_utf8(&mut buf), pen, base, px, Weight::Bold, WHITE.alpha(alpha), None, 0.0);
+                    cv.text(ch.encode_utf8(&mut buf), pen, base, px, Weight::Bold, self.fg.alpha(alpha), None, 0.0);
                 }
             }
             pen += adv;
