@@ -15,7 +15,7 @@ pacman -S --needed --noconfirm \
   hyprland xdg-desktop-portal-hyprland xdg-desktop-portal-gtk hyprlock hypridle hyprpolkitagent hyprpicker \
   waybar fuzzel mako libnotify swaybg cliphist wl-clipboard grim slurp brightnessctl playerctl \
   greetd greetd-tuigreet adw-gtk-theme gnome-keyring kitty pavucontrol micro btop ttf-space-mono-nerd curl \
-  python-gobject webkit2gtk-4.1 gtk-layer-shell \
+  python-gobject webkitgtk-6.0 gtk4-layer-shell \
   $(pacman -Si cachyos-packageinstaller >/dev/null 2>&1 && echo cachyos-packageinstaller) \
   | grep -E "^(Packages|Total Installed)" || true
 
