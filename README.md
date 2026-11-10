@@ -56,25 +56,28 @@ Then log out and in. `install-root.sh` removes the CachyOS Noctalia desktop if p
 
 ## Live JARVIS wallpaper
 
-`wallpaper/jarvis-wall.py` puts the JARVIS holographic core (`jarvis-core.js`, from jarvis-main) on the Wayland
-background layer with GTK4 + WebKitGTK, and feeds its HUD live CPU, RAM and network data. The core's state follows
-load (idle, thinking above 35% CPU, executing above 70%). `jarvis-core.js` is not in this repo:
+The JARVIS holographic core from jarvis-main runs on the Wayland background layer, with a HUD fed live CPU, RAM and
+network data. The core's state follows load (idle, thinking above 35% CPU, executing above 70%). Neither renderer's
+source is in this repo:
 
 ```sh
-JARVIS_CORE=~/code/jarvis-main/core/web bash install.sh
+JARVIS_WALL_RS=~/code/jarvis-main/core/wall-rs bash install.sh   # native (default, WALLPAPER_MODE = "jarvis")
+JARVIS_CORE=~/code/jarvis-main/core/web bash install.sh          # WebKit (WALLPAPER_MODE = "jarvis-web")
 ```
 
-Measured on the LOQ 15IRX9 (Intel iGPU, 1920x1080 @ 144 Hz):
+The native one (`jarvis-main/core/wall-rs`) is a Rust + wgpu port of the three.js scene, bloom and HUD. Measured on
+the LOQ 15IRX9 (Intel iGPU, 1920x1080 @ 144 Hz):
 
-| | |
-|---|---|
-| Render | Intel iGPU only (Mesa EGL forced, the RTX 4060 stays asleep) |
-| Frame rate | 72 fps at full resolution, exactly half the refresh, so pacing is even |
-| CPU | ~60% of one core while visible; ~1% under a fullscreen window (auto-pause) |
-| RAM | ~630 MB (WebKit) |
+| | native (Rust, wgpu/Vulkan) | WebKit (`wallpaper/jarvis-wall.py`) |
+|---|---|---|
+| Render | Intel iGPU only, the RTX 4060 stays asleep | same (Mesa EGL forced) |
+| Frame rate | 72 fps at full resolution, locked to every 2nd vblank | 72 fps |
+| CPU | ~21% of one core | ~60% of one core |
+| RAM | ~145 MB RSS (~60 MB private) | ~630 MB |
 
-`SUPER+F12` (turbo) pauses it. Knobs: `JARVIS_WALL_FPS` (custom cap for faster GPUs), `JARVIS_WALL_QUALITY`
-(`high`/`low`), `JARVIS_WALL_HUD=0`. Set `WALLPAPER_MODE = "dots"` in `settings.lua` for the static dot grid.
+Both pause under a fullscreen window and on `SUPER+F12` (turbo). Native knobs: `JARVIS_WALL_MAX_FPS` (120),
+`JARVIS_WALL_QUALITY` (`high`/`low`), `JARVIS_WALL_MSAA` (1). Set `WALLPAPER_MODE = "dots"` in `settings.lua` for the
+static dot grid.
 
 ## Fonts
 

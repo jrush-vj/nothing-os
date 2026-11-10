@@ -13,6 +13,14 @@ fc-cache -f "$fonts" >/dev/null
 fc-list : family | grep -q "^Doto" && echo "   Doto ok" || echo "   WARNING: Doto font not registered"
 
 echo ">> live wallpaper"
+# The native renderer is built from jarvis-main (private, not in this repo): JARVIS_WALL_RS=~/code/jarvis-main/core/wall-rs
+if [ -n "${JARVIS_WALL_RS:-}" ] && [ -f "$JARVIS_WALL_RS/Cargo.toml" ]; then
+  cargo build --release --manifest-path "$JARVIS_WALL_RS/Cargo.toml"
+  install -Dm755 "$JARVIS_WALL_RS/target/release/jarvis-wall" ~/.local/bin/jarvis-wall
+  echo "   native jarvis-wall installed"
+elif [ ! -x ~/.local/bin/jarvis-wall ]; then
+  echo "   no JARVIS_WALL_RS given: set WALLPAPER_MODE = \"jarvis-web\" or \"dots\" in settings.lua"
+fi
 wall=~/.local/share/jarvis-wall
 mkdir -p "$wall"
 cp "$here/wallpaper/jarvis-wall.py" "$here/wallpaper/index.html" "$wall/"
