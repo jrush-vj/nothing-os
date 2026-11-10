@@ -334,24 +334,34 @@ input-field {
 }
 ]])
 
-render("hypr/hypridle.conf", "# %s", [[
+-- Listeners only for timeouts above 0; with both at 0 the screen never locks or turns off on its own.
+local idle = [[
 general {
     lock_cmd = pidof hyprlock || hyprlock
     before_sleep_cmd = loginctl lock-session
     after_sleep_cmd = hyprctl dispatch 'hl.dsp.dpms({ action = "on" })'
 }
+]]
+if IDLE.lock > 0 then
+    idle = idle .. [[
 
 listener {
     timeout = ${lock}
     on-timeout = loginctl lock-session
 }
+]]
+end
+if IDLE.screen_off > 0 then
+    idle = idle .. [[
 
 listener {
     timeout = ${screen_off}
     on-timeout = hyprctl dispatch 'hl.dsp.dpms({ action = "off" })'
     on-resume = hyprctl dispatch 'hl.dsp.dpms({ action = "on" })'
 }
-]])
+]]
+end
+render("hypr/hypridle.conf", "# %s", idle)
 
 ---------------------------------------------------------------- GTK (adw-gtk3 + libadwaita named colours)
 local gtk_css = [[

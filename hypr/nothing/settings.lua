@@ -12,7 +12,8 @@ DISPLAY = { output = "eDP-1", mode = "1920x1080@144", scale = 1 }
 
 WORKSPACES = 10 -- SUPER+1..9, SUPER+0 = 10; the bar always shows 5 dots
 
-IDLE = { lock = 300, screen_off = 360 } -- seconds
+-- Seconds of inactivity before locking / turning the screen off. 0 = never (the display stays on).
+IDLE = { lock = 0, screen_off = 0 }
 
 WALLPAPER = os.getenv("HOME") .. "/.cache/nothing/dots.ppm" -- generated dot-grid tile, always underneath
 

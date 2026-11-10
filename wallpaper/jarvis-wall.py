@@ -140,7 +140,9 @@ class Wall:
         win.present()
         add_signal = getattr(_glib_unix(), "signal_add", None) or GLib.unix_signal_add
         add_signal(GLib.PRIORITY_DEFAULT, signal.SIGUSR1, self.toggle_pause)
-        add_signal(GLib.PRIORITY_DEFAULT, signal.SIGTERM, lambda: loop.quit() or False)
+        # WebKit's helper processes kept a plain loop.quit() alive; leave at once so restarts never stack wallpapers.
+        add_signal(GLib.PRIORITY_DEFAULT, signal.SIGTERM, lambda: os._exit(0))
+        add_signal(GLib.PRIORITY_DEFAULT, signal.SIGINT, lambda: os._exit(0))
 
     def js(self, code):
         self.web.evaluate_javascript(code, -1, None, None, None, None, None)
@@ -225,7 +227,20 @@ def _rgba(hex_color):
     return c
 
 
+def single_instance():
+    """One wallpaper per session: a second copy exits instead of stacking another background layer."""
+    import fcntl
+
+    lock = open(os.path.join(os.environ.get("XDG_RUNTIME_DIR", "/tmp"), "jarvis-wall.lock"), "w")
+    try:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        sys.exit("jarvis-wall: already running")
+    return lock  # keep the file object (and the lock) alive
+
+
 def main():
+    _lock = single_instance()
     root = os.environ.get("JARVIS_WALL_DIR", ROOT)
     if not os.path.isfile(os.path.join(root, "jarvis-core.js")):
         sys.exit(f"jarvis-wall: {root}/jarvis-core.js missing (run install.sh with JARVIS_CORE=<jarvis-main/core/web>)")
