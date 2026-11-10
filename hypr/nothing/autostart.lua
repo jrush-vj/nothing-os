@@ -2,8 +2,6 @@ hl.on("hyprland.start", function()
     hl.exec_cmd("dbus-update-activation-environment --systemd --all")
     hl.exec_cmd("systemctl --user start hyprpolkitagent")
     hl.exec_cmd("swaybg -m tile -c '#" .. PALETTE.black .. "' -i " .. WALLPAPER)
-    if WALLPAPER_MODE == "jarvis" then hl.exec_cmd(JARVIS_WALL) end
-    if WALLPAPER_MODE == "jarvis-web" then hl.exec_cmd("python3 " .. JARVIS_WALL_WEB) end
     hl.exec_cmd("waybar")
     hl.exec_cmd("mako")
     hl.exec_cmd("hypridle")

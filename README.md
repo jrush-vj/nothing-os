@@ -54,31 +54,6 @@ Then log out and in. `install-root.sh` removes the CachyOS Noctalia desktop if p
 | `Print` | screenshot region (saved + copied) |
 | `SUPER+F12` | turbo: animations off |
 
-## Live JARVIS wallpaper
-
-The JARVIS holographic core from jarvis-main runs on the Wayland background layer, with a HUD fed live CPU, RAM and
-network data. The core's state follows load (idle, thinking above 35% CPU, executing above 70%). Neither renderer's
-source is in this repo:
-
-```sh
-JARVIS_WALL_RS=~/code/jarvis-main/core/wall-rs bash install.sh   # native (default, WALLPAPER_MODE = "jarvis")
-JARVIS_CORE=~/code/jarvis-main/core/web bash install.sh          # WebKit (WALLPAPER_MODE = "jarvis-web")
-```
-
-The native one (`jarvis-main/core/wall-rs`) is a Rust + wgpu port of the three.js scene, bloom and HUD. Measured on
-the LOQ 15IRX9 (Intel iGPU, 1920x1080 @ 144 Hz):
-
-| | native (Rust, wgpu/Vulkan) | WebKit (`wallpaper/jarvis-wall.py`) |
-|---|---|---|
-| Render | Intel iGPU only, the RTX 4060 stays asleep | same (Mesa EGL forced) |
-| Frame rate | 72 fps at full resolution, locked to every 2nd vblank | 72 fps |
-| CPU | ~21% of one core | ~60% of one core |
-| RAM | ~145 MB RSS (~60 MB private) | ~630 MB |
-
-Both pause under a fullscreen window and on `SUPER+F12` (turbo). Native knobs: `JARVIS_WALL_MAX_FPS` (120),
-`JARVIS_WALL_QUALITY` (`high`/`low`), `JARVIS_WALL_MSAA` (1). Set `WALLPAPER_MODE = "dots"` in `settings.lua` for the
-static dot grid.
-
 ## Fonts
 
 [Doto](https://fonts.google.com/specimen/Doto) (dot matrix), [Space Grotesk](https://fonts.google.com/specimen/Space+Grotesk)
