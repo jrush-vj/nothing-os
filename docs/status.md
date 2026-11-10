@@ -13,9 +13,12 @@
   Frosted panel + click-catcher surface. 30 unit tests. Rendering verified on the LOQ; clicks not yet exercised
   by hand (no input injection on the box).
 
+- Slice 5a: bell (unread count, event-driven via dbus-monitor) + notification panel with CLEAR ALL; mako popups
+  restyled (JetBrains Mono, frosted, 22 px, slide in from the right). 31 unit tests.
+
 ## Next
 - Tooltips (short, after a hover delay).
-- Slice 5: bell + notification panel (makoctl), mako restyle; tray (StatusNotifierItem) behind the chevron.
+- Tray (StatusNotifierItem) behind the chevron: needs a D-Bus library (zbus) — to be agreed with the user.
 - Slice 6: remaining settings: shapes (floating, islands, island), auto-hide / shrink, light material,
   other workspace styles.
 

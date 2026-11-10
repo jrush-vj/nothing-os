@@ -8,6 +8,7 @@ use crate::cc::{Graphs, Series, State};
 use crate::config::Config;
 use crate::icons::{self, Icon};
 use crate::media::Track;
+use crate::notif::Note;
 
 /// Panel width and the transparent margin around it (room for the shadow), logical px.
 pub const W: f32 = 320.0;
@@ -19,6 +20,7 @@ const PAD: f32 = 14.0;
 const RADIUS: f32 = 22.0;
 const TILE_BG: Rgba = Rgba(1.0, 1.0, 1.0, 0.07);
 const BLACK: Rgba = Rgba(0.0, 0.0, 0.0, 1.0);
+pub const MAX_NOTES: usize = 8;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Page {
@@ -26,6 +28,7 @@ pub enum Page {
     Settings,
     Wifi,
     Bluetooth,
+    Notifications,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -61,6 +64,8 @@ pub enum PHit {
     Setting(usize),
     Net(usize),
     Dev(usize),
+    ClearAll,
+    Note(usize),
 }
 
 pub const PROFILES: [(&str, &str); 3] = [("SAVER", "power-saver"), ("BALANCED", "balanced"), ("PERF", "performance")];
@@ -81,6 +86,7 @@ pub struct Panel {
     pub bright: Option<f32>,
     pub track: Option<Track>,
     pub graphs: Graphs,
+    pub notes: Vec<Note>,
     pub cfg: Config,
 }
 
@@ -100,6 +106,7 @@ impl Panel {
             bright: None,
             track: None,
             graphs: Graphs::default(),
+            notes: Vec::new(),
             cfg,
         }
     }
@@ -171,6 +178,7 @@ impl Panel {
             Page::Settings => (PAD * 2.0 + 30.0 + 5.0 * 32.0) * s,
             Page::Wifi => (PAD * 2.0 + 30.0 + self.state.networks.len().max(1) as f32 * 30.0) * s,
             Page::Bluetooth => (PAD * 2.0 + 30.0 + self.state.devices.len().max(1) as f32 * 30.0) * s,
+            Page::Notifications => (PAD * 2.0 + 30.0 + self.notes.len().clamp(1, MAX_NOTES) as f32 * 30.0) * s,
         };
         // Soft shadow: a few widening, faint rings below the panel.
         for i in 0..6 {
@@ -204,6 +212,15 @@ impl Panel {
                 }
                 for (i, dev) in self.state.devices.iter().enumerate() {
                     d.row(&dev.name, if dev.connected { "CONNECTED" } else { "PAIRED" }, PHit::Dev(i), if dev.connected { WHITE } else { GREY });
+                }
+            }
+            Page::Notifications => {
+                d.title("NOTIFICATIONS", if self.notes.is_empty() { "" } else { "CLEAR ALL" }, PHit::ClearAll);
+                if self.notes.is_empty() {
+                    d.row("NOTHING NEW", "", PHit::Back, GREY);
+                }
+                for (i, n) in self.notes.iter().take(MAX_NOTES).enumerate() {
+                    d.row(&format!("{} · {}", crate::bar::pretty_class(&n.app), n.summary), "", PHit::Note(i), WHITE);
                 }
             }
         }
@@ -317,6 +334,24 @@ impl Draw<'_> {
         let nx = self.text("‹  ", x, b, 12.0, Weight::Bold, WHITE);
         self.text(title, nx, b, 12.0, Weight::Bold, WHITE);
         self.hits.push((r, PHit::Back));
+        self.y += h;
+    }
+
+    /// A page title with an optional action on the right (e.g. CLEAR ALL).
+    fn title(&mut self, title: &str, action: &str, hit: PHit) {
+        let (x, iw) = self.inner();
+        let h = 30.0 * self.s;
+        let b = self.baseline(self.y, h, 12.0);
+        self.text(title, x, b, 12.0, Weight::Bold, WHITE);
+        if !action.is_empty() {
+            let aw = self.cv.fonts.width(Weight::Bold, 10.0 * self.s, action);
+            let r = [x + iw - aw - 8.0 * self.s, self.y + 4.0 * self.s, aw + 16.0 * self.s, h - 8.0 * self.s];
+            if self.hovered(r) {
+                self.cv.round_rect(r[0], r[1], r[2], r[3], 8.0 * self.s, HOVER.alpha(self.a));
+            }
+            self.text(action, x + iw - aw, self.baseline(self.y, h, 10.0), 10.0, Weight::Bold, RED);
+            self.hits.push((r, hit));
+        }
         self.y += h;
     }
 

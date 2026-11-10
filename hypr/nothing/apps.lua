@@ -190,13 +190,13 @@ radius=16
 
 ---------------------------------------------------------------- mako
 render("mako/config", "# %s", [[
-font=${ui} ${size}
-background-color=#${surface}
+font=${bar} 10
+background-color=#${surface}d9
 text-color=#${white}
 border-color=#${line}
 progress-color=over #${hover}
 border-size=1
-border-radius=16
+border-radius=22
 padding=14,16
 margin=12
 outer-margin=6

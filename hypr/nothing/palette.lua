@@ -25,4 +25,5 @@ FONT = {
     mono = "SpaceMono Nerd Font", -- labels, bar, terminal
     ui   = "Space Grotesk",       -- app text, notifications
     size = 11,
+    bar  = "JetBrains Mono",      -- nothing-bar, its control centre, notification popups
 }

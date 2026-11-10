@@ -25,6 +25,8 @@ hl.layer_rule({ match = { namespace = "^nothing-bar$" }, blur = true, ignore_alp
 -- The control centre is frosted glass; its shadow (alpha < 0.3) is left unblurred. It animates itself.
 hl.layer_rule({ match = { namespace = "^nothing-bar-panel$" }, blur = true, ignore_alpha = 0.3, no_anim = true })
 hl.layer_rule({ match = { namespace = "^nothing-bar-catcher$" }, no_anim = true })
+-- Notification popups (mako): frosted like the panel, sliding in from the right.
+hl.layer_rule({ match = { namespace = "^notifications$" }, blur = true, ignore_alpha = 0.3, animation = "slide right" })
 
 -- Tiling decides sizes, not apps
 hl.window_rule({ name = "no-maximize", match = { class = ".*" }, suppress_event = "maximize" })

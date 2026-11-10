@@ -9,7 +9,7 @@
 //
 // Settings: ~/.config/nothing-bar/config (see config.rs). SIGUSR1: re-check turbo (Hyprland animations off ->
 // bar animations off). SIGUSR2: hide / show. One instance per session.
-// Debugging: NOTHING_BAR_DEBUG=1 logs frame times; NOTHING_BAR_OPEN=main|settings|wifi|bluetooth opens the control
+// Debugging: NOTHING_BAR_DEBUG=1 logs frame times; NOTHING_BAR_OPEN=main|settings|wifi|bluetooth|notifications opens the control
 // centre on that page at start (for screenshots).
 mod anim;
 mod bar;
@@ -19,6 +19,7 @@ mod config;
 mod hypr;
 mod icons;
 mod media;
+mod notif;
 mod panel;
 mod status;
 mod sys;
@@ -58,6 +59,7 @@ const BTN_MIDDLE: u32 = 0x112;
 static AUDIO_CHANGED: AtomicBool = AtomicBool::new(false);
 static MEDIA_CHANGED: AtomicBool = AtomicBool::new(false);
 static CC_CHANGED: AtomicBool = AtomicBool::new(false);
+static NOTIFY_CHANGED: AtomicBool = AtomicBool::new(true);
 
 fn poke(fd: i32) {
     let one: u64 = 1;
@@ -215,6 +217,13 @@ fn main() {
         poke(wake_fd);
     };
     let dgpu_watts: Arc<Mutex<Option<f32>>> = Arc::default();
+    notif::watch(move || {
+        NOTIFY_CHANGED.store(true, Ordering::Relaxed);
+        poke(wake_fd);
+    });
+    // Notifications already there at start are not "new".
+    let mut seen_id = notif::read().first().map_or(0, |n| n.id);
+    let mut cleared_id = 0u32;
     let mut cpu = sys::Cpu::new();
     let mut net = status::NetMeter::new();
     bar.set_stats(None, sys::ram_used_gib());
@@ -272,6 +281,13 @@ fn main() {
             app.dirty = true;
             app.cc_dirty = true;
         }
+        if NOTIFY_CHANGED.swap(false, Ordering::Relaxed) {
+            let notes = notif::read();
+            bar.unread = notes.iter().filter(|n| n.id > seen_id).count();
+            panel.notes = notes.into_iter().filter(|n| n.id > cleared_id).take(panel::MAX_NOTES).collect();
+            app.dirty = true;
+            app.cc_dirty = true;
+        }
         if CC_CHANGED.swap(false, Ordering::Relaxed) {
             panel.state = cc_state.lock().unwrap().clone();
             app.cc_dirty = true;
@@ -311,6 +327,7 @@ fn main() {
                 "settings" => panel::Page::Settings,
                 "wifi" => panel::Page::Wifi,
                 "bluetooth" => panel::Page::Bluetooth,
+                "notifications" => panel::Page::Notifications,
                 _ => panel::Page::Main,
             };
             panel.graphs.disk = cc::disk_usage();
@@ -326,6 +343,20 @@ fn main() {
                 (Some(Hit::MediaPrev), BTN_LEFT) => media::command("previous"),
                 (Some(Hit::MediaToggle), BTN_LEFT) => media::command("play-pause"),
                 (Some(Hit::MediaNext), BTN_LEFT) => media::command("next"),
+                (Some(Hit::Bell), BTN_LEFT) => {
+                    if panel.is_open() {
+                        close_cc(&mut app, &mut panel, bar.still);
+                    } else if let Some(vp) = &viewporter {
+                        open_cc(&mut app, &layer_shell, &compositor, vp, &qh, &bar.cfg);
+                        panel.show(bar.still);
+                        panel.page = panel::Page::Notifications;
+                        seen_id = panel.notes.first().map_or(seen_id, |n| n.id.max(seen_id));
+                        bar.unread = 0;
+                        panel_last.clear();
+                        panel_tick = Instant::now();
+                        app.dirty = true;
+                    }
+                }
                 (Some(Hit::Net | Hit::Brightness | Hit::Volume | Hit::Battery), BTN_LEFT) => {
                     if panel.is_open() {
                         close_cc(&mut app, &mut panel, bar.still);
@@ -455,6 +486,12 @@ fn main() {
                                 next_cc = now + Duration::from_secs(3);
                             }
                         }
+                        Some(PHit::ClearAll) => {
+                            notif::clear_all();
+                            cleared_id = panel.notes.first().map_or(cleared_id, |n| n.id.max(cleared_id));
+                            panel.notes.clear();
+                        }
+                        Some(PHit::Note(_)) => {}
                         Some(PHit::Dev(i)) => {
                             if let Some(d) = st.devices.get(i) {
                                 let verb = if d.connected { "disconnect" } else { "connect" };

@@ -74,7 +74,9 @@ The design came out of four rounds of picking options: [docs/bar-spec.md](docs/b
   power profile, RTX 4060 status, volume/brightness sliders, media card, live graphs (CPU, RAM, temperature, iGPU,
   4060, network, disk), lock/logout/reboot/shutdown (click twice), and a bar settings page that writes the config.
 - `SUPER+SHIFT+B` hides/shows it (SIGUSR2); turbo (`SUPER+F12`) stops its animations too.
-- In progress: notification panel, tray, tooltips, and the other shapes ([docs/plan.md](docs/plan.md)).
+- A bell appears with the number of new notifications; it opens a list with CLEAR ALL. Popups stay with mako,
+  styled to match.
+- In progress: tray, tooltips, and the other shapes ([docs/plan.md](docs/plan.md)).
   Set `BAR = "waybar"` in `settings.lua` to go back to Waybar.
 
 Tests: `cargo test --manifest-path bar/Cargo.toml` (some read /proc, so run them on Linux).

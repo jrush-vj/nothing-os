@@ -34,6 +34,7 @@ pub enum Hit {
     MediaPrev,
     MediaToggle,
     MediaNext,
+    Bell,
 }
 
 /// One drawable bit of a status item.
@@ -76,6 +77,8 @@ pub struct Bar {
     vol: Option<(Tween, bool)>,
     pub battery: Option<Battery>,
     pub dgpu: bool,
+    /// Notifications that arrived since the panel was last opened.
+    pub unread: usize,
     /// Pointer x in buffer pixels while it's over the bar.
     pub hover_x: Option<f32>,
     pill_x: Spring,
@@ -117,6 +120,7 @@ impl Bar {
             vol: None,
             battery: None,
             dgpu: false,
+            unread: 0,
             hover_x: None,
             pill_x: Spring::new(0.0),
             pill_w: Spring::smooth(0.0),
@@ -501,6 +505,9 @@ impl Bar {
         }
         if self.battery.is_some() {
             items.push((Some(Hit::Battery), vec![Piece::Battery]));
+        }
+        if self.unread > 0 {
+            items.push((Some(Hit::Bell), vec![Piece::Icon(Icon::Bell, WHITE), Piece::Text(self.unread.min(99).to_string(), WHITE)]));
         }
         items
     }
