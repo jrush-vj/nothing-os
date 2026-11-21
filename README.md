@@ -64,5 +64,4 @@ cargo test --manifest-path bar/Cargo.toml       # on Linux
 HOME=$(mktemp -d) lua test/mock_test.lua hypr   # the whole config against a fake hl API
 ```
 
-Fonts: Doto, Space Grotesk, Space Mono, JetBrains Mono (SIL OFL). Motion inspired by
-[Tsugumori](https://github.com/Aleph1-9012/Tsugumori); no code or artwork from it.
+Fonts: Doto, Space Grotesk, Space Mono, JetBrains Mono (SIL OFL).

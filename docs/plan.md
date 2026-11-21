@@ -14,13 +14,13 @@ Settings: `~/.config/nothing-bar/config` (plain `key = value`), re-read when it 
 | 5 | Notifications: bell + panel (makoctl), mako restyle; tray popover (StatusNotifierItem) | |
 | 6 | Remaining settings: shapes, heights, positions, materials, workspace styles, clock formats | each toggle applies live |
 
-## Round 2: motion and widgets inspired by Tsugumori (2026-11-21)
+## Round 2: motion and widgets (2026-11-21)
 
-Ideas from [Tsugumori](https://github.com/Aleph1-9012/Tsugumori) re-made in the Nothing language (dot matrix, one
-red signal, no bounce), not copied: no curtains, no Sidonia art, no Quickshell/Qt. Everything stays in nothing-bar
+Motion and widgets in the Nothing language (dot matrix, one
+red signal, no bounce): no curtains, no Quickshell/Qt. Everything stays in nothing-bar
 or the Lua config.
 
-| # | Slice | Tsugumori idea → nothing-os version | Done when |
+| # | Slice | Idea → nothing-os version | Done when |
 |---|---|---|---|
 | 7a | Motion | full-page workspace slide → `slidefade 18%`; red curtain → dot-matrix screen that shrinks away from the bar's corner; scramble roll → labels decode left to right with a red write head | runs on the LOQ, turbo skips it |
 | 7b | Lock | Phase line lock → nothing-bar session lock (ext-session-lock): Doto clock, a dot field that ripples on each key, red dot per typed char, PAM; hyprlock stays the fallback | locks/unlocks on the LOQ |
