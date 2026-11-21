@@ -93,10 +93,43 @@ impl Tween {
     }
 }
 
+/// A label decoding at progress `p` (0..1): (revealed prefix, the character being written, the rest as dots).
+/// Spaces stay spaces so words keep their shape; a monospace font keeps every width unchanged.
+pub fn decode(s: &str, p: f32) -> (String, String, String) {
+    let n = s.chars().count();
+    let k = ((p.clamp(0.0, 1.0) * n as f32) as usize).min(n);
+    let head = s.chars().take(k).collect();
+    let cur = s.chars().skip(k).take(1).collect();
+    let rest = s.chars().skip(k + 1).map(|c| if c == ' ' { ' ' } else { '·' }).collect();
+    (head, cur, rest)
+}
+
+/// How much of a dot-matrix cell still covers the card at reveal progress `p` (1 = covered, 0 = clear).
+/// `phase` (0..1) is the cell's place along the sweep; each cell takes 30% of the run to shrink away.
+pub fn dot_cover(p: f32, phase: f32) -> f32 {
+    1.0 - ((p * 1.3 - phase) / 0.3).clamp(0.0, 1.0)
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn decode_writes_left_to_right_and_keeps_spaces() {
+        assert_eq!(decode("WI FI", 0.0), ("".into(), "W".into(), "· ··".into()));
+        assert_eq!(decode("WI FI", 0.4), ("WI".into(), " ".into(), "··".into()));
+        assert_eq!(decode("WI FI", 1.0), ("WI FI".into(), "".into(), "".into()));
+        assert_eq!(decode("", 0.5), ("".into(), "".into(), "".into()));
+    }
+
+    #[test]
+    fn dots_cover_at_start_and_clear_by_the_end() {
+        for phase in [0.0, 0.5, 1.0] {
+            assert_eq!(dot_cover(0.0, phase), 1.0);
+            assert!(dot_cover(1.0, phase) < 1e-5);
+        }
+        assert!(dot_cover(0.3, 0.0) < dot_cover(0.3, 1.0)); // the sweep's start clears first
+    }
 
     #[test]
     fn spring_overshoots_a_little_then_settles() {

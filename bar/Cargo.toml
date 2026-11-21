@@ -7,7 +7,7 @@ license = "MIT"
 publish = false
 
 [dependencies]
-smithay-client-toolkit = { version = "0.21", default-features = false }
+smithay-client-toolkit = { version = "0.21", default-features = false, features = ["xkbcommon"] }  # keyboard input for the widgets and lock
 wayland-client = "0.31"
 tiny-skia = "0.12"
 ab_glyph = "0.2"
@@ -19,3 +19,8 @@ lto = "thin"
 codegen-units = 1
 strip = true
 panic = "abort"
+
+# Optimised, but with the debug-only test hooks (NOTHING_KEYS, NOTHING_LOCK_TEST_UNLOCK) for checking on a real box.
+[profile.probe]
+inherits = "release"
+debug-assertions = true

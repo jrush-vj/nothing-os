@@ -1,5 +1,6 @@
 // The control centre: a one-column, phone-style panel under the right end of the bar (frosted, 22 px corners,
-// soft shadow). Opens with a 180 ms drop + fade, closes with a quick fade. Pages: main, bar settings, Wi-Fi,
+// soft shadow). Opens with a 180 ms drop + fade, closes with a quick fade. On opening and on every page change a
+// dot-matrix screen shrinks away from the bar's corner and the labels decode left to right (300 ms). Pages: main, bar settings, Wi-Fi,
 // Bluetooth. Layout and drawing happen together; `hits` records the clickable rectangles.
 use crate::anim::Tween;
 use crate::bar::{GREY, HOVER, RED, WHITE};
@@ -20,6 +21,7 @@ const PAD: f32 = 14.0;
 const RADIUS: f32 = 22.0;
 const TILE_BG: Rgba = Rgba(1.0, 1.0, 1.0, 0.07);
 const BLACK: Rgba = Rgba(0.0, 0.0, 0.0, 1.0);
+const REVEAL_S: f32 = 0.3;
 pub const MAX_NOTES: usize = 8;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -73,6 +75,9 @@ pub const PROFILES: [(&str, &str); 3] = [("SAVER", "power-saver"), ("BALANCED", 
 pub struct Panel {
     pub page: Page,
     open: Tween,
+    /// The dot-matrix reveal and label decode, restarted for each page.
+    reveal: Tween,
+    shown: Page,
     now: f32,
     /// Pointer in buffer pixels while over the panel.
     pub pointer: Option<(f32, f32)>,
@@ -98,6 +103,8 @@ impl Panel {
         Self {
             page: Page::Main,
             open: Tween::new(0.0),
+            reveal: Tween::new(1.0),
+            shown: Page::Main,
             now: 0.0,
             pointer: None,
             hits: Vec::new(),
@@ -119,7 +126,15 @@ impl Panel {
     pub fn show(&mut self, still: bool) {
         self.page = Page::Main;
         self.armed = None;
+        if !self.is_open() {
+            self.restart_reveal(still);
+        }
         self.open.to(1.0, self.now, if still { 0.0 } else { 0.18 });
+    }
+
+    fn restart_reveal(&mut self, still: bool) {
+        self.reveal.snap(if still { 1.0 } else { 0.0 });
+        self.reveal.to(1.0, self.now, REVEAL_S);
     }
 
     pub fn hide(&mut self, still: bool) {
@@ -142,7 +157,11 @@ impl Panel {
         if self.armed.is_some_and(|(_, t)| self.now - t > 3.0) {
             self.armed = None;
         }
-        self.open.moving(self.now)
+        if self.page != self.shown {
+            self.shown = self.page;
+            self.restart_reveal(self.turbo);
+        }
+        self.open.moving(self.now) || self.reveal.moving(self.now)
     }
 
     pub fn hit(&self, x: f32, y: f32) -> Option<PHit> {
@@ -188,7 +207,8 @@ impl Panel {
         let x0 = MARGIN * s;
         let w = W * s;
         let mut hits = std::mem::take(&mut self.hits);
-        let mut d = Draw { cv, s, x0, y: y0 + PAD * s, w, a: t, hits: &mut hits, pointer: self.pointer, now: self.now };
+        let reveal = self.reveal.get(self.now);
+        let mut d = Draw { cv, s, x0, y: y0 + PAD * s, w, a: t, hits: &mut hits, pointer: self.pointer, now: self.now, reveal, top: y0, h };
         // Soft shadow: a few widening, faint rings below the panel.
         for i in 0..6 {
             let g = (i as f32 + 1.0) * 2.5 * s;
@@ -232,6 +252,12 @@ impl Panel {
                     d.row(&format!("{} · {}", crate::bar::pretty_class(&n.app), n.summary), "", PHit::Note(i), WHITE);
                 }
             }
+        }
+        if reveal < 1.0 {
+            // The dot screen sweeps away from the corner nearest the bar.
+            let from = if self.cfg.position.at_top() { (1.0, 0.0) } else { (1.0, 1.0) };
+            let ink = Rgba::hex(0x0d0d0d).alpha(0.92 * t);
+            crate::fx::dot_screen(d.cv, x0, y0, w, h, 10.0 * s, RADIUS * s, reveal, from, ink);
         }
         self.hits = hits;
     }
@@ -314,9 +340,26 @@ struct Draw<'a> {
     hits: &'a mut Vec<([f32; 4], PHit)>,
     pointer: Option<(f32, f32)>,
     now: f32,
+    /// Reveal progress (0..1) and the card's top and height, to stagger the decode down the card.
+    reveal: f32,
+    top: f32,
+    h: f32,
 }
 
 impl Draw<'_> {
+    /// Decode progress for a line at baseline `base`: lower lines start a little later.
+    fn decode_at(&self, base: f32) -> f32 {
+        let lag = ((base - self.top) / self.h.max(1.0)).clamp(0.0, 1.0) * 0.35;
+        ((self.reveal - lag) / 0.65).clamp(0.0, 1.0)
+    }
+
+    /// Text that decodes while the reveal runs (lower lines a little later).
+    #[allow(clippy::too_many_arguments)]
+    fn label(&mut self, t: &str, x: f32, base: f32, px: f32, w: Weight, c: Rgba, clip: Option<(f32, f32)>, fade: f32) -> f32 {
+        let p = self.decode_at(base);
+        crate::fx::decode_text(self.cv, t, x, base, px * self.s, w, c.alpha(self.a), p, clip, fade)
+    }
+
     fn inner(&self) -> (f32, f32) {
         (self.x0 + PAD * self.s, self.w - 2.0 * PAD * self.s)
     }
@@ -330,7 +373,7 @@ impl Draw<'_> {
     }
 
     fn text(&mut self, t: &str, x: f32, base: f32, px: f32, w: Weight, c: Rgba) -> f32 {
-        self.cv.text(t, x, base, px * self.s, w, c.alpha(self.a), None, 0.0)
+        self.label(t, x, base, px, w, c, None, 0.0)
     }
 
     fn text_right(&mut self, t: &str, right: f32, base: f32, px: f32, c: Rgba) {
@@ -385,7 +428,7 @@ impl Draw<'_> {
         // Long names (SSIDs, devices) fade out before the value.
         let vw = self.cv.fonts.width(Weight::Regular, 11.0 * self.s, value);
         let clip = (x + iw - vw - 12.0 * self.s).max(x + 40.0 * self.s);
-        self.cv.text(label, x, b, 11.0 * self.s, Weight::Regular, label_c.alpha(self.a), Some((0.0, clip)), 16.0 * self.s);
+        self.label(label, x, b, 11.0, Weight::Regular, label_c, Some((0.0, clip)), 16.0 * self.s);
         self.text_right(value, x + iw, b, 11.0, GREY);
         self.hits.push((r, hit));
         self.y += h;

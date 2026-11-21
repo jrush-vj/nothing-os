@@ -9,20 +9,30 @@
 //
 // Settings: ~/.config/nothing-bar/config (see config.rs). SIGUSR1: re-check turbo (Hyprland animations off ->
 // bar animations off). SIGUSR2: hide / show. One instance per session.
+// Pop-ups run as their own processes from the same binary: `nothing-bar notes|clip|player|wall|lock` (shell.rs,
+// lock.rs).
 // Debugging: NOTHING_BAR_DEBUG=1 logs frame times; NOTHING_BAR_OPEN=main|settings|wifi|bluetooth|notifications opens the control
 // centre on that page at start (for screenshots).
 mod anim;
 mod bar;
 mod canvas;
 mod cc;
+mod clip;
 mod config;
+mod fx;
 mod hypr;
 mod icons;
+mod lock;
 mod media;
+mod notes;
 mod notif;
 mod panel;
+mod player;
+mod shell;
 mod status;
 mod sys;
+mod text;
+mod wall;
 
 use smithay_client_toolkit::{
     compositor::{CompositorHandler, CompositorState, FrameCallbackData, Region},
@@ -130,6 +140,22 @@ struct App {
 }
 
 fn main() {
+    let widget: Option<Box<dyn shell::Widget>> = match std::env::args().nth(1).as_deref() {
+        Some("notes") => Some(Box::new(notes::Notes::new(notes::dir()))),
+        Some("clip") => Some(Box::new(clip::Clip::new())),
+        Some("player") => Some(Box::new(player::Player::new())),
+        Some("wall") => Some(Box::new(wall::Wall::new())),
+        Some("lock") => std::process::exit(lock::run()),
+        Some(other) => {
+            eprintln!("nothing-bar: unknown mode {other} (notes, clip, player, wall, lock)");
+            std::process::exit(2);
+        }
+        None => None,
+    };
+    if let Some(w) = widget {
+        let name = format!("nothing-{}", std::env::args().nth(1).unwrap_or_default());
+        std::process::exit(shell::run(&name, w));
+    }
     let _lock = match sys::single_instance() {
         Ok(f) => f,
         Err(e) => {

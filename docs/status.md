@@ -26,7 +26,29 @@
   restart race with the single-instance lock, DGPU shown only when a driver is bound and the GPU is active
   (control centre says NO DRIVER instead), ETHERNET on the networks row, graph tracks.
 
+- Slice 7a (2026-11-21, code only): workspaces `slidefade 18%`; control centre dot-matrix reveal + label decode on open
+  and on each page change (300 ms, off in turbo). On the LOQ: 33 tests pass, installed, frames captured mid-open
+  (dots sweep from the bar's corner, labels decode with a red head); Hyprland reload with no config errors. Workspace
+  slidefade not yet watched by eye; reveal frame cost not measured.
+
+- Slices 7b–7f (2026-11-21): pop-ups as separate processes from the same binary (shell.rs runner: layer surface
+  with keyboard focus, open/close motion, key repeat, toggle, PNG preview): notes, clip, player, wall; and the lock
+  screen (lock.rs: ext-session-lock + PAM via libpam FFI). Shared fx.rs (dot screen, decode text, dot-matrix
+  images via ImageMagick), text.rs (editor model). Keys: SUPER+N notes (editor moved to SUPER+SHIFT+N), SUPER+V
+  clip, SUPER+P player, SUPER+W wallpaper; hypridle lock_cmd -> nothing-bar lock || hyprlock;
+  misc:allow_session_lock_restore on. 48 tests (incl. real PAM rejecting a wrong password), Lua mock test passes.
+  Verified live on the LOQ by screenshots: every widget with scripted keys, wallpaper transition, player with a fake
+  MPRIS track (art, hover colour, pause), a real lock -> wrong password (PAM) -> unlock.
+- Security review of 7b–7f (2026-11-21): FIX FIRST -> fixed: images are sniffed in Rust and only PNG/JPEG/GIF/WebP
+  reach ImageMagick with an explicit coder (art URLs and clipboard data are untrusted); file:// art must be absolute;
+  curl capped (10 MB, http/https only); the lock exits 1 (hyprlock takes over) when it cannot take its lock file;
+  pop-up toggles only signal a pid > 1 whose comm matches; no /tmp fallback; password buffer pre-sized and wiped in
+  full; PAM answers hidden prompts only, checks pam_acct_mgmt, and a check stuck for 30 s gives the prompt back.
+  49 tests. Debug hooks exist only in the `probe` profile; the installed release binary has none (checked).
+
 ## Next
+- Not exercised by hand: real keyboard typing in the pop-ups (scripted keys use the same path after xkb), clipboard
+  image entries, seeking by click, a second monitor while locked.
 - Tray (StatusNotifierItem) behind the chevron: needs a D-Bus library (zbus) — to be agreed with the user.
 - App icons as a workspace style (needs icon-theme lookup and SVG/PNG decoding).
 

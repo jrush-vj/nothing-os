@@ -40,7 +40,13 @@ local keys = {
     { "Space",           "launcher",                  run("fuzzel") },
     { "E",               "files",                     run(APPS.files) },
     { "B",               "browser",                   run(APPS.browser) },
-    { "N",               "editor",                    run(APPS.editor) },
+    { "SHIFT + N",       "editor",                    run(APPS.editor) },
+
+    { "nothing" },
+    { "N",               "notes",                     run(NOTHING_BAR .. " notes") },
+    { "V",               "clipboard history",         run(NOTHING_BAR .. " clip") },
+    { "P",               "now playing",               run(NOTHING_BAR .. " player") },
+    { "W",               "wallpaper",                 run(NOTHING_BAR .. " wall") },
     { "SHIFT + Escape",  "system monitor",            run(APPS.monitor) },
 
     { "windows" },
@@ -81,7 +87,6 @@ local keys = {
     { "SHIFT + S",       "send to scratchpad",        hl.dsp.window.move({ workspace = "special" }) },
 
     { "system" },
-    { "V",               "clipboard history",         run([[cliphist list | fuzzel --dmenu --prompt "CLIPBOARD  " | cliphist decode | wl-copy]]) },
     { "comma",           "dismiss notifications",     run("makoctl dismiss --all") },
     { "SHIFT + comma",   "restore notification",      run("makoctl restore") },
     { "A",               "do not disturb",            run("makoctl mode -t dnd") },

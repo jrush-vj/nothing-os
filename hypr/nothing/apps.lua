@@ -12,6 +12,7 @@ local VARS = {
     mixer      = json(APPS.mixer),
     lock       = IDLE.lock,
     screen_off = IDLE.screen_off,
+    locker     = NOTHING_BAR,
 }
 
 local function lookup(k)
@@ -337,7 +338,7 @@ input-field {
 -- Listeners only for timeouts above 0; with both at 0 the screen never locks or turns off on its own.
 local idle = [[
 general {
-    lock_cmd = pidof hyprlock || hyprlock
+    lock_cmd = pgrep -x nothing-lock || pidof hyprlock || ${locker} lock || hyprlock
     before_sleep_cmd = loginctl lock-session
     after_sleep_cmd = hyprctl dispatch 'hl.dsp.dpms({ action = "on" })'
 }

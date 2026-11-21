@@ -36,6 +36,7 @@ hl.config({
     },
     dwindle = { preserve_split = true },
     misc = {
+        allow_session_lock_restore = true, -- if the locker dies, a new one (hyprlock) can take over the lock
         background_color = c("black"),
         force_default_wallpaper = 0,
         disable_hyprland_logo = true,

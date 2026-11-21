@@ -21,7 +21,7 @@ local anims = {
     { "layersOut",         1,     "exit",   "fade" },
     { "fadeLayersIn",      1.5,   "ease" },
     { "fadeLayersOut",     1,     "exit" },
-    { "workspaces",        3,     "ease",   "slide" },
+    { "workspaces",        3,     "ease",   "slidefade 18%" }, -- a short slide under a crossfade, not a full page swipe
     { "specialWorkspace",  2.5,   "ease",   "slidevert" },
     { "zoomFactor",        2,     "ease" },
 }
