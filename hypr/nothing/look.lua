@@ -12,7 +12,7 @@ hl.config({
         border_size = 2,
         resize_on_border = true,
         extend_border_grab_area = 10,
-        col = { active_border = c("red"), inactive_border = c("line") },
+        col = { active_border = c("grey"), inactive_border = c("line") },
     },
     decoration = {
         rounding = 14, -- Nothing phone widget corners
@@ -25,7 +25,7 @@ hl.config({
     },
     group = {
         col = {
-            border_active = c("red"), border_inactive = c("line"),
+            border_active = c("grey"), border_inactive = c("line"),
             border_locked_active = c("white"), border_locked_inactive = c("line"),
         },
         groupbar = {

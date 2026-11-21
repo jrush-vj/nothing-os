@@ -561,17 +561,11 @@ impl Bar {
             self.media_span = (p0, p1);
             if let Some(p) = track.progress() {
                 let ph = self.media_pill_h(h, s);
-                let (lx, lw, ly) = if shape == Shape::Strip {
-                    (0.0, w, if top { h - 2.0 * s } else { 0.0 })
-                } else {
-                    (p0 + ph / 2.0, (p1 - p0 - ph).max(0.0), (h + ph) / 2.0 - 3.0 * s)
-                };
-                // Whole pixels, so the line keeps its thickness while the pill slides; the faint track keeps it
-                // visible near 0 %.
+                // Inside the pill in every shape. Whole pixels, so the line keeps its thickness while the pill
+                // slides; the faint track keeps it visible near 0 %.
+                let (lx, lw, ly) = (p0 + ph / 2.0, (p1 - p0 - ph).max(0.0), (h + ph) / 2.0 - 3.0 * s);
                 let (lx, lw, ly, lh) = (lx.round(), lw.round(), ly.round(), (2.0 * s).round().max(1.0));
-                if shape != Shape::Strip {
-                    cv.rect(lx, ly, lw, lh, fg.alpha(0.15 * e));
-                }
+                cv.rect(lx, ly, lw, lh, fg.alpha(0.15 * e));
                 cv.rect(lx, ly, (lw * p.clamp(0.0, 1.0)).round().max(lh), lh, RED.alpha(e));
             }
         }
@@ -752,7 +746,12 @@ impl Bar {
     fn update_pill(&mut self, s: f32) {
         let now = self.now;
         let d = if self.still { 0.0 } else { 0.12 };
-        let target = self.hover_x.and_then(|x| self.hits.iter().find(|(a, b, _)| x >= *a && x < *b)).map(|(a, b, _)| (*a, *b));
+        // Workspaces have their own active marker; a pill behind them too is just noise.
+        let target = self
+            .hover_x
+            .and_then(|x| self.hits.iter().find(|(a, b, _)| x >= *a && x < *b))
+            .filter(|(_, _, hit)| !matches!(hit, Hit::Workspace(_)))
+            .map(|(a, b, _)| (*a, *b));
         match target {
             Some((a, b)) => {
                 let (tx, tw) = (a - 6.0 * s, b - a + 12.0 * s);
