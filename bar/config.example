@@ -1,5 +1,7 @@
 # nothing-bar settings. Changes apply as soon as the file is saved (or from the control centre's BAR SETTINGS).
 
+# dark | light   (the bar, control centre, tooltips and pop-ups; the lock screen stays dark)
+theme = dark
 # strip | floating | islands | island
 shape = strip
 # scales everything (bar, control centre, tooltips): small (100%) | medium (115%) | large (130%) | xlarge (145%)
@@ -7,7 +9,7 @@ shape = strip
 size = large
 # top | bottom | autohide (slides in at the top edge) | shrink (centre island while a window is maximized)
 position = top
-# solid | translucent | frosted | clear | fade | light   (translucent/frosted use Hyprland's blur behind the bar)
+# solid | translucent | frosted | clear | fade   (translucent/frosted use Hyprland's blur behind the bar)
 material = solid
 # red (red number) | block (inverted block) | dot (red dot under) | pill (sliding red pill) | dots
 workspaces = red

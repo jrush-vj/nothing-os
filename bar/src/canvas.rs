@@ -2,7 +2,34 @@
 // sub-pixel offset) and cached, so a frame of the bar is mostly memcpy-sized work.
 use ab_glyph::{Font, FontVec, PxScale, ScaleFont};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tiny_skia::{Color, Paint, Pixmap, Rect, Transform};
+
+/// Light theme: everything is drawn dark and flipped on its way to the screen (`to_argb`).
+pub static LIGHT: AtomicBool = AtomicBool::new(false);
+
+/// Copies a pixmap (premultiplied RGBA) into an ARGB8888 buffer (BGRA bytes), flipped if the theme is light.
+pub fn to_argb(src: &[u8], dst: &mut [u8]) {
+    let light = LIGHT.load(Ordering::Relaxed);
+    for (d, s) in dst.chunks_exact_mut(4).zip(src.chunks_exact(4)) {
+        let ([r, g, b], a) = if light { flip([s[0], s[1], s[2]], s[3]) } else { ([s[0], s[1], s[2]], s[3]) };
+        d.copy_from_slice(&[b, g, r, a]);
+    }
+}
+
+/// Mirrors a premultiplied pixel's lightness (L -> 1 - L) keeping hue and saturation: black and white swap,
+/// greys mirror, Nothing red stays red.
+fn flip(c: [u8; 3], a: u8) -> ([u8; 3], u8) {
+    let (hi, lo) = (c.iter().max().copied().unwrap_or(0), c.iter().min().copied().unwrap_or(0));
+    // Faint pure black is a drop shadow; it stays a shadow rather than turning into a glow.
+    if hi == 0 && a < 90 {
+        return (c, a);
+    }
+    let d = a as i32 - hi as i32 - lo as i32;
+    let c = c.map(|v| (v as i32 + d).clamp(0, a as i32) as u8);
+    // Translucent surfaces (bar, frosted panel) would turn grey over a dark desktop: light ones are solid.
+    if a >= 128 { (c.map(|v| (v as u32 * 255 / a as u32) as u8), 255) } else { (c, a) }
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum Weight {
@@ -241,6 +268,19 @@ fn blend(pix: &mut Pixmap, g: &Glyph, ox: i32, baseline: i32, c: Rgba, cx0: f32,
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn light_theme_flips_lightness_only() {
+        assert_eq!(flip([0, 0, 0], 255), ([255, 255, 255], 255));
+        assert_eq!(flip([255, 255, 255], 255), ([0, 0, 0], 255));
+        assert_eq!(flip([0x99, 0x99, 0x99], 255), ([0x66, 0x66, 0x66], 255));
+        let (red, _) = flip([0xd7, 0x19, 0x21], 255);
+        assert!(red[0] > 200 && red[1] < 60 && red[2] < 60, "red stays red: {red:?}");
+        assert_eq!(flip(red, 255).0, [0xd7, 0x19, 0x21], "flipping twice is a no-op");
+        assert_eq!(flip([0, 0, 0], 40), ([0, 0, 0], 40), "shadows stay dark");
+        assert_eq!(flip([10, 10, 10], 60), ([50, 50, 50], 60), "faint pixels stay premultiplied");
+        assert_eq!(flip([20, 20, 20], 128), ([215, 215, 215], 255), "translucent surfaces turn solid");
+    }
 
     #[test]
     fn hex_and_mix() {

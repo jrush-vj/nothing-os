@@ -544,7 +544,8 @@ pub fn run() -> i32 {
                 }
                 let (bw, bh) = (cv.pix.width() as i32, cv.pix.height() as i32);
                 if let Ok((buffer, bytes)) = pool.create_buffer(bw, bh, bw * 4, wl_shm::Format::Argb8888) {
-                    shell::to_argb(&cv, bytes);
+                    // The lock never loads the config, so LIGHT stays off: it is always dark.
+                    crate::canvas::to_argb(cv.pix.data(), bytes);
                     surface.set_buffer_scale(sc);
                     surface.damage_buffer(0, 0, bw, bh);
                     if buffer.attach_to(surface).is_ok() {

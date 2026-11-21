@@ -49,6 +49,12 @@
   chars. Progress line: faint track, whole pixels, re-reads the same MPRIS instance every 2 s (also while paused),
   keeps the length when Firefox drops it after a paused seek. 48 tests on the LOQ; seek-while-paused checked by
   screenshot. README rewritten around screenshots (docs/shots/).
+- Theme (2026-11-21): `theme = dark|light`, THEME row at the top of BAR SETTINGS. Light is a lightness flip
+  (hue kept, so red stays red) in canvas::to_argb for the bar, control centre, tooltips and pop-ups; translucent
+  surfaces turn solid, shadows stay dark, the lock stays dark. Replaces the old `material = light` (still read as
+  the light theme). Media is its own island only in `islands`; elsewhere a plain group. 49 tests; checked by
+  screenshot in strip/floating/islands x dark/light, control centre and player. Album art and image wallpaper
+  previews are flipped too in light.
 
 ## Next
 - Not exercised by hand: real keyboard typing in the pop-ups (scripted keys use the same path after xkb), clipboard

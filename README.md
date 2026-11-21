@@ -14,7 +14,7 @@ Rust, Wayland layer-shell, ~5 MB RAM, draws only while something moves.
 | floating | ![floating](docs/shots/shape-floating.png) |
 | islands | ![islands](docs/shots/shape-islands.png) |
 | island | ![island](docs/shots/shape-island.png) |
-| light | ![light](docs/shots/material-light.png) |
+| light theme | ![light theme](docs/shots/theme-light.png) |
 | frosted | ![frosted](docs/shots/material-frosted.png) |
 
 Workspace styles: red · block · dot · pill · dots

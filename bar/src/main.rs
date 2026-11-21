@@ -168,6 +168,7 @@ fn main() {
 
     let mut watcher = config::Watcher::new();
     let cfg = watcher.poll().unwrap_or_default();
+    canvas::LIGHT.store(cfg.light, std::sync::atomic::Ordering::Relaxed);
     let load_fonts = |family: &str| match canvas::Fonts::load(family) {
         Ok(f) => f,
         Err(e) => {
@@ -784,6 +785,7 @@ fn main() {
 /// Applies a (changed) config: re-places the bar if its geometry changed, reloads the font if needed.
 fn apply_config(app: &mut App, bar: &mut bar::Bar, cv: &mut canvas::Canvas, c: config::Config) {
     let refont = c.font != bar.cfg.font;
+    canvas::LIGHT.store(c.light, std::sync::atomic::Ordering::Relaxed);
     bar.cfg = c;
     // Geometry (height, position, shape) is re-placed by the main loop when it differs from what's placed.
     if refont && let Ok(f) = canvas::Fonts::load(&bar.cfg.font) {
@@ -920,7 +922,9 @@ fn present(layer: &LayerSurface, scale: i32, pool: &mut SlotPool, cv: &canvas::C
     if want_frame {
         surface.frame(qh, FrameCallbackData(surface.clone()));
     }
-    if last.as_slice() == cv.pix.data() {
+    // The theme byte rides along so a theme switch re-presents an otherwise unchanged frame.
+    let light = canvas::LIGHT.load(std::sync::atomic::Ordering::Relaxed) as u8;
+    if last.split_last() == Some((&light, cv.pix.data())) {
         if want_frame {
             layer.commit();
         }
@@ -928,13 +932,12 @@ fn present(layer: &LayerSurface, scale: i32, pool: &mut SlotPool, cv: &canvas::C
     }
     last.clear();
     last.extend_from_slice(cv.pix.data());
+    last.push(light);
     let Ok((buffer, bytes)) = pool.create_buffer(w, h, w * 4, wl_shm::Format::Argb8888) else {
         eprintln!("nothing-bar: no shm buffer");
         return false;
     };
-    for (dst, src) in bytes.chunks_exact_mut(4).zip(cv.pix.data().chunks_exact(4)) {
-        dst.copy_from_slice(&[src[2], src[1], src[0], src[3]]);
-    }
+    canvas::to_argb(cv.pix.data(), bytes);
     surface.set_buffer_scale(scale.max(1));
     surface.damage_buffer(0, 0, w, h);
     if buffer.attach_to(surface).is_ok() {

@@ -242,13 +242,6 @@ pub fn hints(cv: &mut Canvas, items: &[(&str, &str)], x: f32, base: f32, s: f32,
     }
 }
 
-/// Copies the pixmap (premultiplied RGBA) into an ARGB8888 buffer (BGRA bytes).
-pub fn to_argb(cv: &Canvas, dst: &mut [u8]) {
-    for (d, s) in dst.chunks_exact_mut(4).zip(cv.pix.data().chunks_exact(4)) {
-        d.copy_from_slice(&[s[2], s[1], s[0], s[3]]);
-    }
-}
-
 /// Renders one fully open frame of `w` into a PNG (NOTHING_PREVIEW), for checking layouts without a session.
 fn preview(w: &mut dyn Widget, cv: &mut Canvas, s: f32, path: &str) {
     let p = w.place();
@@ -293,6 +286,7 @@ struct App {
 /// Runs `widget` as the pop-up `name` until it closes. Returns the process exit code.
 pub fn run(name: &str, mut widget: Box<dyn Widget>) -> i32 {
     let cfg = load_config();
+    crate::canvas::LIGHT.store(cfg.light, Ordering::Relaxed);
     let fonts = match crate::canvas::Fonts::load(&cfg.font) {
         Ok(f) => f,
         Err(e) => {
@@ -464,7 +458,7 @@ pub fn run(name: &str, mut widget: Box<dyn Widget>) -> i32 {
             }
             let (bw, bh) = (cv.pix.width() as i32, cv.pix.height() as i32);
             if let Ok((buffer, bytes)) = pool.create_buffer(bw, bh, bw * 4, wl_shm::Format::Argb8888) {
-                to_argb(&cv, bytes);
+                crate::canvas::to_argb(cv.pix.data(), bytes);
                 surface.set_buffer_scale(app.scale.max(1));
                 surface.damage_buffer(0, 0, bw, bh);
                 if buffer.attach_to(&surface).is_ok() {

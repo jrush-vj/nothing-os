@@ -44,7 +44,6 @@ pub enum Material {
     Frosted,
     Clear,
     Fade,
-    Light,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -64,6 +63,8 @@ pub struct Config {
     pub height: u32,
     pub position: Position,
     pub material: Material,
+    /// Light theme for the bar and its pop-ups (the lock screen stays dark).
+    pub light: bool,
     pub clock: ClockFormat,
     pub hairline: bool,
     pub font: String,
@@ -80,6 +81,7 @@ impl Default for Config {
             height: 28,
             position: Position::Top,
             material: Material::Solid,
+            light: false,
             clock: ClockFormat::HhMm,
             hairline: true,
             font: "JetBrains Mono".into(),
@@ -98,7 +100,10 @@ impl Config {
             match k {
                 "height" => c.height = v.parse().ok().filter(|h| (16..=64).contains(h)).unwrap_or(c.height),
                 "position" => c.position = by_name(&POSITIONS, v).unwrap_or(c.position),
+                // "light" used to be a material; it is the theme now.
+                "material" if v == "light" => c.light = true,
                 "material" => c.material = by_name(&MATERIALS, v).unwrap_or(c.material),
+                "theme" => c.light = v == "light",
                 "clock" => c.clock = by_name(&CLOCKS, v).unwrap_or(c.clock),
                 "shape" => c.shape = by_name(&SHAPES, v).unwrap_or(c.shape),
                 "size" => {
@@ -124,13 +129,12 @@ const POSITIONS: [(Position, &str); 4] = [
     (Position::AutoHide, "autohide"),
     (Position::Shrink, "shrink"),
 ];
-const MATERIALS: [(Material, &str); 6] = [
+const MATERIALS: [(Material, &str); 5] = [
     (Material::Solid, "solid"),
     (Material::Translucent, "translucent"),
     (Material::Frosted, "frosted"),
     (Material::Clear, "clear"),
     (Material::Fade, "fade"),
-    (Material::Light, "light"),
 ];
 const SHAPES: [(Shape, &str); 4] = [(Shape::Strip, "strip"), (Shape::Floating, "floating"), (Shape::Islands, "islands"), (Shape::Island, "island")];
 const WS_STYLES: [(WsStyle, &str); 5] = [
@@ -162,8 +166,9 @@ fn next<T: PartialEq + Copy>(table: &[(T, &'static str)], v: T) -> T {
 
 impl Config {
     /// The settings page's rows: (label, current value).
-    pub fn rows(&self) -> [(&'static str, String); 7] {
+    pub fn rows(&self) -> [(&'static str, String); 8] {
         [
+            ("THEME", if self.light { "LIGHT".into() } else { "DARK".into() }),
             ("SHAPE", name(&SHAPES, self.shape).to_uppercase()),
             ("SIZE", format!("{:.0}%", self.size * 100.0)),
             ("POSITION", name(&POSITIONS, self.position).to_uppercase()),
@@ -177,16 +182,17 @@ impl Config {
     /// Steps row `i` to its next value.
     pub fn cycle(&mut self, i: usize) {
         match i {
-            0 => self.shape = next(&SHAPES, self.shape),
-            1 => {
+            0 => self.light = !self.light,
+            1 => self.shape = next(&SHAPES, self.shape),
+            2 => {
                 let i = SIZES.iter().position(|(z, _)| (z - self.size).abs() < 0.01).map_or(0, |i| i + 1);
                 self.size = SIZES[i % SIZES.len()].0;
             }
-            2 => self.position = next(&POSITIONS, self.position),
-            3 => self.material = next(&MATERIALS, self.material),
-            4 => self.workspaces = next(&WS_STYLES, self.workspaces),
-            5 => self.clock = next(&CLOCKS, self.clock),
-            6 => self.hairline = !self.hairline,
+            3 => self.position = next(&POSITIONS, self.position),
+            4 => self.material = next(&MATERIALS, self.material),
+            5 => self.workspaces = next(&WS_STYLES, self.workspaces),
+            6 => self.clock = next(&CLOCKS, self.clock),
+            7 => self.hairline = !self.hairline,
             _ => {}
         }
     }
@@ -196,8 +202,9 @@ impl Config {
             "# nothing-bar settings (also changed from the control centre). Changes apply when the file is saved.".to_string(),
             "# shape strip, floating, islands, island | size small, medium, large, xlarge (or a percentage)".into(),
             "# position top, bottom, autohide, shrink | height and font_px are the sizes at 100%".into(),
-            "# material solid, translucent, frosted, clear, fade, light | workspaces red, block, dot, pill, dots".into(),
+            "# theme dark, light | material solid, translucent, frosted, clear, fade | workspaces red, block, dot, pill, dots".into(),
             "# clock hh:mm, hh:mm:ss, date, 12h | hairline on, off".into(),
+            format!("theme = {}", if self.light { "light" } else { "dark" }),
             format!("shape = {}", name(&SHAPES, self.shape)),
             format!("size = {}", SIZES.iter().find(|(z, _)| (z - self.size).abs() < 0.01).map_or(format!("{:.0}%", self.size * 100.0), |(_, n)| n.to_string())),
             format!("height = {}", self.height),
@@ -272,21 +279,22 @@ mod tests {
     #[test]
     fn render_round_trips_and_cycles_wrap() {
         let mut c = Config::default();
-        for i in 0..7 {
+        for i in 0..8 {
             c.cycle(i);
         }
         assert_eq!(Config::parse(&c.render()), c);
         assert!(c.render().lines().all(|l| !l.starts_with(' ')));
         assert_eq!((c.shape, c.size, c.position, c.material), (Shape::Floating, 1.45, Position::Bottom, Material::Translucent));
-        assert_eq!((c.workspaces, c.clock, c.hairline), (WsStyle::Block, ClockFormat::HhMmSs, false));
+        assert_eq!((c.workspaces, c.clock, c.hairline, c.light), (WsStyle::Block, ClockFormat::HhMmSs, false, true));
         for _ in 0..4 {
-            c.cycle(1);
+            c.cycle(2);
         }
         assert_eq!(c.size, 1.45);
         assert_eq!(Config::parse("size = 120%").size, 1.2);
         assert_eq!(Config::parse("size = 9").size, 1.3, "out of range keeps the default");
         let c = Config::parse("position = autohide\nmaterial = light\nshape = island\nworkspaces = dots");
-        assert_eq!((c.position, c.material, c.shape, c.workspaces), (Position::AutoHide, Material::Light, Shape::Island, WsStyle::Dots));
+        assert_eq!((c.position, c.light, c.shape, c.workspaces), (Position::AutoHide, true, Shape::Island, WsStyle::Dots));
+        assert!(!Config::parse("theme = light\ntheme = dark").light);
     }
 
     #[test]

@@ -91,7 +91,7 @@ pub struct Bar {
     pub hits: Vec<(f32, f32, Hit)>,
     /// The x range of the workspace numbers (scroll there switches workspace).
     pub ws_span: (f32, f32),
-    /// Text colours for the current material (dark or light).
+    /// Text colours.
     fg: Rgba,
     dim: Rgba,
     /// The active window is maximized/fullscreen (the "shrink" position collapses to the island).
@@ -375,13 +375,7 @@ impl Bar {
             Material::Translucent => Some(RAISED.alpha(0.62)),
             Material::Frosted => Some(Rgba::hex(0x0d0d0d).alpha(0.55)),
             Material::Clear | Material::Fade => None,
-            Material::Light => Some(Rgba::hex(0xf2f2f2)),
         }
-    }
-
-    /// The media pill fills the bar height in islands, and sits inset everywhere else.
-    fn media_pill_h(&self, h: f32, s: f32) -> f32 {
-        if self.shape() == Shape::Islands { h } else { h - 6.0 * s }
     }
 
     /// Draws the whole bar into `cv` (buffer pixels; `s` = output scale).
@@ -389,10 +383,9 @@ impl Bar {
         let (w, h) = (cv.pix.width() as f32, cv.pix.height() as f32);
         let px = self.cfg.font_px * s;
         let top = self.cfg.position.at_top();
-        let light = self.cfg.material == Material::Light;
-        (self.fg, self.dim) = if light { (Rgba::hex(0x111111), Rgba::hex(0x6b6b6b)) } else { (WHITE, GREY) };
-        let hover = if light { Rgba::hex(0xdcdcdc) } else { HOVER };
-        let line = if light { Rgba::hex(0xc8c8c8) } else { Rgba::hex(0x2e2e2e) };
+        // Always drawn dark; the light theme is a flip on the way to the screen (canvas::to_argb).
+        (self.fg, self.dim) = (WHITE, GREY);
+        let (hover, line) = (HOVER, Rgba::hex(0x2e2e2e));
         let shape = self.shape();
         let clear = Rgba(0.0, 0.0, 0.0, 0.0);
         // Pills and floating cards need some fill even with "clear"/"fade" materials.
@@ -461,13 +454,12 @@ impl Bar {
         if self.cfg.hairline && shape == Shape::Strip {
             cv.hairline(if top { h - 1.0 } else { 0.0 }, 0.0, w, self.fg.alpha(0.45));
         }
-        // The media pill, where the media was last frame (so the hover pill can sit on top of it).
+        // The media island (islands only), where the media was last frame so the hover pill can sit on top of it.
         let (m0, m1) = self.media_span;
-        if m1 > m0 && shape != Shape::Island {
-            let (ma, ph) = (self.media_t.get(now), self.media_pill_h(h, s));
-            let y = (h - ph) / 2.0;
-            cv.round_rect(m0, y, m1 - m0, ph, ph / 2.0, card.alpha(card.3 * ma));
-            cv.stroke_round_rect(m0 + 0.5, y + 0.5, m1 - m0 - 1.0, ph - 1.0, ph / 2.0, 1.0, line.alpha(line.3 * ma));
+        if m1 > m0 && shape == Shape::Islands {
+            let ma = self.media_t.get(now);
+            cv.round_rect(m0, 0.0, m1 - m0, h, h / 2.0, card.alpha(ma));
+            cv.stroke_round_rect(m0 + 0.5, 0.5, m1 - m0 - 1.0, h - 1.0, h / 2.0, 1.0, line.alpha(ma));
         }
 
         // Hover pill, placed from where things were last frame; it glides between items and fades in and out.
@@ -530,8 +522,11 @@ impl Bar {
         let misz = (px * 0.95).round();
         let label = self.track.as_ref().map(|t| ellipsize(if t.title.is_empty() { &t.artist } else { &t.title }, MEDIA_CHARS)).unwrap_or_default();
         let label_w = cv.fonts.width(Weight::Regular, px, &label).min(300.0 * s);
-        // gap before the pill + its padding + three buttons + the label
-        let media_w = if self.track.is_some() { (3.0 * misz + 68.0 * s + label_w) * mt } else { 0.0 };
+        // Islands give media its own pill (gap, padding inside it); elsewhere it is a plain group after a gap.
+        let pill = shape == Shape::Islands;
+        let (mgap, mpad) = if pill { (20.0 * s, 12.0 * s) } else { (24.0 * s, 0.0) };
+        // gap + padding on both sides + three buttons and their spacing + the label
+        let media_w = if self.track.is_some() { (mgap + 2.0 * mpad + 3.0 * misz + 24.0 * s + label_w) * mt } else { 0.0 };
         let title_limit = (limit - media_w).max(x);
         if !self.class.is_empty() && x < title_limit {
             let app = pretty_class(&self.class);
@@ -541,10 +536,10 @@ impl Bar {
         self.left_end = x;
         self.media_span = (0.0, 0.0);
         if let Some(track) = self.track.clone() {
-            // Its own pill; slides in from the left while fading in.
+            // Slides in from the left while fading in.
             let e = mt;
-            let p0 = x + 20.0 * s - (1.0 - e) * 16.0 * s;
-            let mut mx = p0 + 12.0 * s;
+            let p0 = x + mgap - (1.0 - e) * 16.0 * s;
+            let mut mx = p0 + mpad;
             let a = la * e;
             let iy = ((h - misz) / 2.0).round() + ldy;
             let play = if track.playing { Icon::Pause } else { Icon::Play };
@@ -557,13 +552,15 @@ impl Bar {
             let end = (mx + label_w).min(limit);
             let fade = if mx + full > end { 24.0 * s } else { 0.0 };
             cv.text(&label, mx, base + ldy, px, Weight::Regular, dim.alpha(a), Some((0.0, end + if fade > 0.0 { 0.0 } else { 1.0 })), fade);
-            let p1 = end + 12.0 * s;
-            self.media_span = (p0, p1);
+            let p1 = end + mpad;
+            if pill {
+                self.media_span = (p0, p1);
+            }
             if let Some(p) = track.progress() {
-                let ph = self.media_pill_h(h, s);
-                // Inside the pill in every shape. Whole pixels, so the line keeps its thickness while the pill
-                // slides; the faint track keeps it visible near 0 %.
-                let (lx, lw, ly) = (p0 + ph / 2.0, (p1 - p0 - ph).max(0.0), (h + ph) / 2.0 - 3.0 * s);
+                // Along the bottom of the pill (clear of its round ends), or under the group. Whole pixels, so the
+                // line keeps its thickness while it slides; the faint track keeps it visible near 0 %.
+                let (lx, lw, ly) = if pill { (p0 + h / 2.0, p1 - p0 - h, h - 3.0 * s) } else { (p0, p1 - p0, h - 4.0 * s) };
+                let lw = lw.max(0.0);
                 let (lx, lw, ly, lh) = (lx.round(), lw.round(), ly.round(), (2.0 * s).round().max(1.0));
                 cv.rect(lx, ly, lw, lh, fg.alpha(0.15 * e));
                 cv.rect(lx, ly, (lw * p.clamp(0.0, 1.0)).round().max(lh), lh, RED.alpha(e));
@@ -610,8 +607,7 @@ impl Bar {
     fn draw_workspaces(&mut self, cv: &mut Canvas, x0: f32, base: f32, px: f32, cap: f32, h: f32, s: f32, la: f32) -> f32 {
         let now = self.now;
         let style = self.cfg.workspaces;
-        let (fg, light) = (self.fg, self.cfg.material == Material::Light);
-        let ink = if light { WHITE } else { Rgba::hex(0x111111) };
+        let (fg, ink) = (self.fg, Rgba::hex(0x111111));
         let gap = match style {
             WsStyle::Dots => 7.0 * s,
             WsStyle::Block | WsStyle::Pill => 15.0 * s, // the block/pill reach past the number
