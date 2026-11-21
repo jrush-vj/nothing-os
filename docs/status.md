@@ -45,6 +45,10 @@
   pop-up toggles only signal a pid > 1 whose comm matches; no /tmp fallback; password buffer pre-sized and wiped in
   full; PAM answers hidden prompts only, checks pam_acct_mgmt, and a check stuck for 30 s gives the prompt back.
   49 tests. Debug hooks exist only in the `probe` profile; the installed release binary has none (checked).
+- Bar left side (2026-11-21): app name only (no window title); media in its own pill with the track title cut to 24
+  chars. Progress line: faint track, whole pixels, re-reads the same MPRIS instance every 2 s (also while paused),
+  keeps the length when Firefox drops it after a paused seek. 48 tests on the LOQ; seek-while-paused checked by
+  screenshot. README rewritten around screenshots (docs/shots/).
 
 ## Next
 - Not exercised by hand: real keyboard typing in the pop-ups (scripted keys use the same path after xkb), clipboard

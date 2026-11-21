@@ -14,6 +14,8 @@ pub struct Track {
     pub length: f64,
     position: f64,
     at: Instant,
+    /// The MPRIS instance ("firefox.instance_1_268"), so re-reads ask the same player.
+    player: String,
 }
 
 impl Track {
@@ -26,18 +28,9 @@ impl Track {
     pub fn progress(&self) -> Option<f32> {
         (self.length > 0.0).then(|| (self.position() / self.length) as f32)
     }
-
-    pub fn label(&self) -> String {
-        match (self.artist.is_empty(), self.title.is_empty()) {
-            (false, false) => format!("{} — {}", self.artist, self.title),
-            (true, false) => self.title.clone(),
-            (false, true) => self.artist.clone(),
-            _ => String::new(),
-        }
-    }
 }
 
-const FORMAT: &str = "{{status}}\t{{position}}\t{{mpris:length}}\t{{artist}}\t{{title}}";
+const FORMAT: &str = "{{status}}\t{{position}}\t{{mpris:length}}\t{{artist}}\t{{title}}\t{{playerInstance}}";
 
 /// One playerctl line -> a track (None: no player, or stopped).
 fn parse(line: &str) -> Option<Track> {
@@ -53,13 +46,27 @@ fn parse(line: &str) -> Option<Track> {
         artist: f[3].trim().to_string(),
         title: f[4].trim().to_string(),
         at: Instant::now(),
+        player: f.get(5).map_or("", |p| p.trim()).to_string(),
     })
+}
+
+/// Firefox briefly reports no length and position 0 after a seek while paused; keep what we knew about the same
+/// track instead of dropping the progress line.
+fn merge(old: Option<&Track>, mut new: Option<Track>) -> Option<Track> {
+    if let (Some(o), Some(n)) = (old, new.as_mut())
+        && n.length == 0.0
+        && o.length > 0.0
+        && (&o.player, &o.title) == (&n.player, &n.title)
+    {
+        (n.length, n.position) = (o.length, o.position());
+    }
+    new
 }
 
 pub type Shared = Arc<Mutex<Option<Track>>>;
 
-/// Follows the active player; calls `changed` after every update. Also re-reads the position every 5 s while
-/// playing, in case of seeks (playerctl only reports metadata/status changes).
+/// Follows the active player; calls `changed` after every update. Also re-reads the position every 2 s (playing
+/// or paused), in case of seeks (playerctl only reports metadata/status changes).
 pub fn watch(changed: impl Fn() + Send + Sync + 'static) -> Shared {
     let shared: Shared = Arc::default();
     let changed = Arc::new(changed);
@@ -75,7 +82,9 @@ pub fn watch(changed: impl Fn() + Send + Sync + 'static) -> Shared {
                 let Ok(mut child) = child else { return }; // no playerctl: no media
                 if let Some(out) = child.stdout.take() {
                     for line in BufReader::new(out).lines().map_while(Result::ok) {
-                        *shared.lock().unwrap() = parse(&line);
+                        let mut cur = shared.lock().unwrap();
+                        *cur = merge(cur.as_ref(), parse(&line));
+                        drop(cur);
                         changed();
                     }
                 }
@@ -88,14 +97,21 @@ pub fn watch(changed: impl Fn() + Send + Sync + 'static) -> Shared {
         let (shared, changed) = (shared.clone(), changed.clone());
         std::thread::spawn(move || {
             loop {
-                std::thread::sleep(std::time::Duration::from_secs(5));
-                if !shared.lock().unwrap().as_ref().is_some_and(|t| t.playing) {
-                    continue;
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                let Some(player) = shared.lock().unwrap().as_ref().map(|t| t.player.clone()) else { continue };
+                let mut cmd = Command::new("playerctl");
+                if !player.is_empty() {
+                    cmd.args(["-p", &player]);
                 }
-                let Ok(out) = Command::new("playerctl").args(["metadata", "--format", FORMAT]).output() else { continue };
+                let Ok(out) = cmd.args(["metadata", "--format", FORMAT]).output() else { continue };
                 let line = String::from_utf8_lossy(&out.stdout).trim_end().to_string();
-                *shared.lock().unwrap() = parse(&line);
-                changed();
+                let mut cur = shared.lock().unwrap();
+                // The follower may have moved to another player while we asked; its report wins.
+                if cur.as_ref().is_some_and(|t| t.player == player) {
+                    *cur = merge(cur.as_ref(), parse(&line));
+                    drop(cur);
+                    changed();
+                }
             }
         });
     }
@@ -112,12 +128,18 @@ mod tests {
 
     #[test]
     fn parses_playerctl_lines() {
-        let t = parse("Playing\t12000000\t300000000\tDaft Punk\tVeridis Quo").unwrap();
+        let t = parse("Playing\t12000000\t300000000\tDaft Punk\tVeridis Quo\tspotify").unwrap();
+        assert_eq!(t.player, "spotify");
+        // A length-less report of the same track keeps the length; another track doesn't.
+        let gap = merge(Some(&t), parse("Paused\t0\t\tDaft Punk\tVeridis Quo\tspotify")).unwrap();
+        assert!(gap.length == 300.0 && gap.position() >= 12.0);
+        let other = merge(Some(&t), parse("Paused\t0\t\tDaft Punk\tOne More Time\tspotify")).unwrap();
+        assert_eq!(other.progress(), None);
         assert!(t.playing && t.length == 300.0 && t.position() >= 12.0);
-        assert_eq!(t.label(), "Daft Punk — Veridis Quo");
+        assert_eq!((t.artist.as_str(), t.title.as_str()), ("Daft Punk", "Veridis Quo"));
         assert!(parse("Stopped\t0\t0\t\t").is_none());
         assert!(parse("").is_none());
         let p = parse("Paused\t\t\t\tPodcast").unwrap();
-        assert_eq!((p.label().as_str(), p.progress()), ("Podcast", None));
+        assert_eq!((p.title.as_str(), p.progress()), ("Podcast", None));
     }
 }

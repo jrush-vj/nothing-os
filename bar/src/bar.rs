@@ -65,7 +65,6 @@ pub struct Bar {
     ws: Vec<Ws>,
     active: i32,
     class: String,
-    title: String,
     windows: Vec<(String, i32)>,
     clock: String,
     clock_prev: String,
@@ -101,6 +100,8 @@ pub struct Bar {
     reveal: Spring,
     /// Where the left content ended last frame (the left island's width).
     left_end: f32,
+    /// Where the media pill was last frame (x0, x1); empty when nothing plays.
+    media_span: (f32, f32),
     /// The sliding red pill of the "pill" workspace style.
     wpill_x: Spring,
     wpill_w: Spring,
@@ -120,7 +121,6 @@ impl Bar {
             ws: Vec::new(),
             active: 0,
             class: String::new(),
-            title: String::new(),
             windows: Vec::new(),
             clock: String::new(),
             clock_prev: String::new(),
@@ -147,6 +147,7 @@ impl Bar {
             busy: false,
             reveal: Spring::smooth(1.0),
             left_end: 0.0,
+            media_span: (0.0, 0.0),
             wpill_x: Spring::new(0.0),
             wpill_w: Spring::smooth(0.0),
         }
@@ -192,7 +193,7 @@ impl Bar {
             w.leaving = false;
             w.appear.set(1.0);
         }
-        (self.class, self.title, self.windows, self.busy) = (s.class, s.title, s.windows, s.busy);
+        (self.class, self.windows, self.busy) = (s.class, s.windows, s.busy);
         if self.still {
             self.settle();
         }
@@ -378,6 +379,11 @@ impl Bar {
         }
     }
 
+    /// The media pill fills the bar height in islands, and sits inset everywhere else.
+    fn media_pill_h(&self, h: f32, s: f32) -> f32 {
+        if self.shape() == Shape::Islands { h } else { h - 6.0 * s }
+    }
+
     /// Draws the whole bar into `cv` (buffer pixels; `s` = output scale).
     pub fn draw(&mut self, cv: &mut Canvas, s: f32) {
         let (w, h) = (cv.pix.width() as f32, cv.pix.height() as f32);
@@ -455,6 +461,14 @@ impl Bar {
         if self.cfg.hairline && shape == Shape::Strip {
             cv.hairline(if top { h - 1.0 } else { 0.0 }, 0.0, w, self.fg.alpha(0.45));
         }
+        // The media pill, where the media was last frame (so the hover pill can sit on top of it).
+        let (m0, m1) = self.media_span;
+        if m1 > m0 && shape != Shape::Island {
+            let (ma, ph) = (self.media_t.get(now), self.media_pill_h(h, s));
+            let y = (h - ph) / 2.0;
+            cv.round_rect(m0, y, m1 - m0, ph, ph / 2.0, card.alpha(card.3 * ma));
+            cv.stroke_round_rect(m0 + 0.5, y + 0.5, m1 - m0 - 1.0, ph - 1.0, ph / 2.0, 1.0, line.alpha(line.3 * ma));
+        }
 
         // Hover pill, placed from where things were last frame; it glides between items and fades in and out.
         self.update_pill(s);
@@ -514,25 +528,23 @@ impl Bar {
         // Media takes up to `media_w` at the end of the left side; the title gets what's left.
         let mt = self.media_t.get(now);
         let misz = (px * 0.95).round();
-        let label = self.track.as_ref().map(|t| t.label()).unwrap_or_default();
+        let label = self.track.as_ref().map(|t| ellipsize(if t.title.is_empty() { &t.artist } else { &t.title }, MEDIA_CHARS)).unwrap_or_default();
         let label_w = cv.fonts.width(Weight::Regular, px, &label).min(300.0 * s);
-        let media_w = if self.track.is_some() { (3.0 * misz + 3.0 * 8.0 * s + label_w + 16.0 * s) * mt } else { 0.0 };
+        // gap before the pill + its padding + three buttons + the label
+        let media_w = if self.track.is_some() { (3.0 * misz + 68.0 * s + label_w) * mt } else { 0.0 };
         let title_limit = (limit - media_w).max(x);
         if !self.class.is_empty() && x < title_limit {
             let app = pretty_class(&self.class);
-            let clip = Some((0.0, title_limit));
-            x = cv.text(&app, x, base + ldy, px, Weight::Bold, fg.alpha(la), clip, 24.0 * s);
-            let short = short_title(&self.title, &self.class);
-            if !short.is_empty() {
-                x = cv.text(" · ", x, base + ldy, px, Weight::Regular, dim.alpha(la), clip, 24.0 * s);
-                x = cv.text(&short, x, base + ldy, px, Weight::Regular, dim.alpha(la), clip, 24.0 * s);
-            }
+            x = cv.text(&app, x, base + ldy, px, Weight::Bold, fg.alpha(la), Some((0.0, title_limit)), 24.0 * s);
             x = x.min(title_limit);
         }
+        self.left_end = x;
+        self.media_span = (0.0, 0.0);
         if let Some(track) = self.track.clone() {
-            // Slides in from the left while fading in.
+            // Its own pill; slides in from the left while fading in.
             let e = mt;
-            let mut mx = x + 16.0 * s - (1.0 - e) * 16.0 * s;
+            let p0 = x + 20.0 * s - (1.0 - e) * 16.0 * s;
+            let mut mx = p0 + 12.0 * s;
             let a = la * e;
             let iy = ((h - misz) / 2.0).round() + ldy;
             let play = if track.playing { Icon::Pause } else { Icon::Play };
@@ -545,14 +557,24 @@ impl Bar {
             let end = (mx + label_w).min(limit);
             let fade = if mx + full > end { 24.0 * s } else { 0.0 };
             cv.text(&label, mx, base + ldy, px, Weight::Regular, dim.alpha(a), Some((0.0, end + if fade > 0.0 { 0.0 } else { 1.0 })), fade);
-            x = x.max(end);
+            let p1 = end + 12.0 * s;
+            self.media_span = (p0, p1);
             if let Some(p) = track.progress() {
-                let ly = if top { h - 2.0 * s } else { 0.0 };
-                let (lx, lw) = if shape == Shape::Strip { (0.0, w) } else { (pad, (self.left_end - pad).max(0.0)) };
-                cv.rect(lx, ly, (lw * p).round(), 2.0 * s, RED.alpha(e));
+                let ph = self.media_pill_h(h, s);
+                let (lx, lw, ly) = if shape == Shape::Strip {
+                    (0.0, w, if top { h - 2.0 * s } else { 0.0 })
+                } else {
+                    (p0 + ph / 2.0, (p1 - p0 - ph).max(0.0), (h + ph) / 2.0 - 3.0 * s)
+                };
+                // Whole pixels, so the line keeps its thickness while the pill slides; the faint track keeps it
+                // visible near 0 %.
+                let (lx, lw, ly, lh) = (lx.round(), lw.round(), ly.round(), (2.0 * s).round().max(1.0));
+                if shape != Shape::Strip {
+                    cv.rect(lx, ly, lw, lh, fg.alpha(0.15 * e));
+                }
+                cv.rect(lx, ly, (lw * p.clamp(0.0, 1.0)).round().max(lh), lh, RED.alpha(e));
             }
         }
-        self.left_end = x;
         self.hits.extend(right_hits);
         self.finish(cv, s);
     }
@@ -819,17 +841,12 @@ pub fn pretty_class(class: &str) -> String {
     c.next().map(|f| f.to_uppercase().chain(c).collect()).unwrap_or_default()
 }
 
-/// The useful part of a window title: drop a trailing " — App" / " - App" that repeats the app name.
-pub fn short_title(title: &str, class: &str) -> String {
-    let app = pretty_class(class).to_lowercase();
-    for sep in [" — ", " - ", " – "] {
-        if let Some((head, tail)) = title.rsplit_once(sep)
-            && tail.to_lowercase().contains(&app)
-        {
-            return head.trim().to_string();
-        }
-    }
-    if title.to_lowercase() == app { String::new() } else { title.trim().to_string() }
+/// How many characters of the track title the media pill shows.
+const MEDIA_CHARS: usize = 24;
+/// Cuts `s` to `n` characters, ending in "…" when it was longer.
+pub fn ellipsize(s: &str, n: usize) -> String {
+    let s = s.trim();
+    if s.chars().count() <= n { s.to_string() } else { s.chars().take(n - 1).collect::<String>().trim_end().to_string() + "…" }
 }
 
 #[cfg(test)]
@@ -841,10 +858,10 @@ mod tests {
     }
 
     #[test]
-    fn titles_lose_the_app_suffix() {
-        assert_eq!(short_title("GitHub — Mozilla Firefox", "firefox"), "GitHub");
-        assert_eq!(short_title("main.rs - nvim", "kitty"), "main.rs - nvim");
-        assert_eq!(short_title("kitty", "kitty"), "");
+    fn names_are_shortened() {
+        assert_eq!(ellipsize("Veridis Quo", 24), "Veridis Quo");
+        assert_eq!(ellipsize("Harder, Better, Faster, Stronger", 24), "Harder, Better, Faster,…");
+        assert_eq!(ellipsize("abcdef", 4), "abc…");
         assert_eq!(pretty_class("org.gnome.Nautilus"), "Nautilus");
     }
 
